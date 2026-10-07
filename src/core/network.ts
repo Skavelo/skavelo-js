@@ -1,0 +1,139 @@
+import type { AskPayload, AskResponse, FeedbackPayload, RemoteConfig, UserContext } from '../types';
+
+/** Where the widget talks to Skavelo unless `apiUrl` says otherwise. */
+export const DEFAULT_API_URL = 'https://api.skavelo.com/api';
+
+export class NetworkClient {
+  private apiUrl: string;
+  private agentId: string;
+  private conversationId: string | null = null;
+
+  constructor(apiUrl: string, agentId: string) {
+    this.apiUrl = apiUrl.replace(/\/$/, '');
+    this.agentId = agentId;
+  }
+
+  setConversationId(id: string) {
+    this.conversationId = id;
+  }
+
+  async ask(payload: AskPayload, signal?: AbortSignal): Promise<AskResponse> {
+    const res = await this.request<AskResponse>('POST', `/sdk/ask`, payload, signal);
+    this.conversationId = res.conversationId;
+    return res;
+  }
+
+  /**
+   * Streams the answer: onText gets the answer as it's written, the promise resolves with
+   * the full response. Throws StreamUnavailable before anything is sent if streaming
+   * isn't possible, so the caller can fall back to ask().
+   */
+  async askStream(
+    payload: AskPayload,
+    handlers: { onText: (text: string) => void },
+    signal?: AbortSignal,
+  ): Promise<AskResponse> {
+    const res = await fetch(`${this.apiUrl}/sdk/ask/stream`, {
+      method: 'POST',
+      signal,
+      credentials: 'omit',
+      headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream', 'X-Agent-Id': this.agentId },
+      body: JSON.stringify(payload),
+    }).catch((err) => {
+      if (signal?.aborted) throw err;
+      throw new StreamUnavailable(String(err));
+    });
+    if (res.status === 403 || res.status === 429) throw await refusal(res);
+    if (!res.ok || !res.body || !(res.headers.get('content-type') ?? '').includes('text/event-stream')) {
+      throw new StreamUnavailable(`status ${res.status}`);
+    }
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      let split: number;
+      while ((split = buffer.indexOf('\n\n')) >= 0) {
+        const frame = buffer.slice(0, split);
+        buffer = buffer.slice(split + 2);
+        const event = /^event: (.*)$/m.exec(frame)?.[1];
+        const data = frame.split('\n').filter((l) => l.startsWith('data: ')).map((l) => l.slice(6)).join('\n');
+        if (!event || !data) continue;
+        const parsed = JSON.parse(data);
+        if (event === 'meta') this.conversationId = parsed.conversationId;
+        else if (event === 'delta') handlers.onText(parsed.text);
+        else if (event === 'error') {
+          if (parsed.status === 403 || parsed.status === 429) throw new Refused(parsed.message ?? 'Refused', parsed.status);
+          throw new Error(parsed.message ?? 'Failed to process question');
+        }
+        else if (event === 'done') {
+          this.conversationId = parsed.conversationId;
+          return parsed as AskResponse;
+        }
+      }
+    }
+    throw new Error('The answer stream ended early');
+  }
+
+  config(signal?: AbortSignal): Promise<RemoteConfig> {
+    return this.request<RemoteConfig>('GET', '/sdk/config', undefined, signal);
+  }
+
+  async feedback(payload: FeedbackPayload): Promise<void> {
+    await this.request('POST', `/sdk/feedback`, payload);
+  }
+
+  async skillResult(payload: { messageId: string; outcome: 'approved' | 'rejected' | 'succeeded' | 'failed'; detail?: string }): Promise<void> {
+    await this.request('POST', '/sdk/skill-result', payload);
+  }
+
+  async identify(conversationId: string, user: UserContext): Promise<void> {
+    await this.request('POST', `/sdk/identify`, { conversationId, user });
+  }
+
+  private async request<T>(method: string, path: string, body?: unknown, signal?: AbortSignal): Promise<T> {
+    const url = `${this.apiUrl}${path}`;
+    const res = await fetch(url, {
+      method,
+      signal,
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Agent-Id': this.agentId,
+      },
+      credentials: 'omit',
+      body: body ? JSON.stringify(body) : undefined,
+    });
+
+    if (res.status === 403 || res.status === 429) throw await refusal(res);
+    if (!res.ok) {
+      const text = await res.text().catch(() => '');
+      throw new Error(`Skavelo API ${res.status}: ${text}`);
+    }
+
+    // Feedback and similar calls answer 204 with no body.
+    if (res.status === 204) return undefined as T;
+    return res.json() as Promise<T>;
+  }
+}
+
+/**
+ * Skavelo said no on purpose: a usage limit, or this site isn't one of the agent's allowed sites.
+ * The message is for the site's developer; visitors get a short, friendly line instead.
+ */
+export class Refused extends Error {
+  constructor(message: string, public status: number) {
+    super(message);
+  }
+}
+
+async function refusal(res: Response): Promise<Refused> {
+  const body = await res.json().catch(() => null) as { message?: string | string[] } | null;
+  const message = Array.isArray(body?.message) ? body!.message[0] : body?.message;
+  return new Refused(message ?? `Refused with status ${res.status}`, res.status);
+}
+
+/** Streaming isn't available (old server, proxy, browser); use the normal request instead. */
+export class StreamUnavailable extends Error {}

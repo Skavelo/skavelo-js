@@ -1,0 +1,81 @@
+{
+  "name": "@skavelo/sdk",
+  "version": "0.1.0",
+  "description": "Skavelo's in-product AI guide: answers your users' questions, walks them through your app and runs actions they approve.",
+  "type": "module",
+  "license": "Elastic-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/skavelo/skavelo-js.git"
+  },
+  "main": "./dist/cjs/index.js",
+  "module": "./dist/esm/index.js",
+  "types": "./dist/types/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/esm/index.js",
+      "require": "./dist/cjs/index.js",
+      "types": "./dist/types/index.d.ts"
+    },
+    "./react": {
+      "import": "./packages/react/dist/esm/index.js",
+      "require": "./packages/react/dist/cjs/index.js",
+      "types": "./packages/react/dist/types/index.d.ts"
+    }
+  },
+  "files": [
+    "dist",
+    "packages/react/dist",
+    "LICENSE.md"
+  ],
+  "scripts": {
+    "build": "rollup -c rollup.config.js",
+    "dev": "rollup -c rollup.config.js --watch",
+    "playground": "echo 'Playground: http://localhost:5403/playground/?agent=<agent id>' && python3 -m http.server 5403",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "clean": "rm -rf dist packages/react/dist",
+    "publish:cdn": "bash scripts/publish-cdn.sh",
+    "build:release": "NODE_ENV=production rollup -c",
+    "check:package": "node scripts/check-package.mjs",
+    "prepublishOnly": "npm run build:release && npm run check:package"
+  },
+  "devDependencies": {
+    "@rollup/plugin-commonjs": "^28.0.0",
+    "@rollup/plugin-node-resolve": "^16.0.0",
+    "@rollup/plugin-terser": "^0.4.4",
+    "@rollup/plugin-typescript": "^12.0.0",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "happy-dom": "^20.14.5",
+    "react-dom": "19.3.0",
+    "rollup": "^4.0.0",
+    "rollup-plugin-dts": "^6.1.0",
+    "tslib": "^2.8.1",
+    "typescript": "^5.7.0",
+    "vitest": "^2.0.0"
+  },
+  "peerDependencies": {
+    "react": ">=18.0.0"
+  },
+  "peerDependenciesMeta": {
+    "react": {
+      "optional": true
+    }
+  },
+  "homepage": "https://github.com/skavelo/skavelo-js#readme",
+  "bugs": {
+    "url": "https://github.com/skavelo/skavelo-js/issues"
+  },
+  "keywords": [
+    "skavelo",
+    "in-app help",
+    "onboarding",
+    "product tours",
+    "walkthroughs",
+    "ai assistant",
+    "support widget",
+    "react"
+  ]
+}

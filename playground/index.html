@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Ledgerly (Skavelo playground)</title>
+  <style>
+    :root { --bg:#F6F7F9; --surface:#fff; --line:#E4E7EC; --text:#101828; --text-2:#475467; --accent:#2F6BFF; }
+    * { box-sizing: border-box; }
+    body { margin:0; font:14px/1.5 system-ui, sans-serif; background:var(--bg); color:var(--text); display:flex; min-height:100vh; }
+    aside { width:210px; background:var(--surface); border-right:1px solid var(--line); padding:20px 12px; flex-shrink:0; }
+    aside .brand { font-weight:700; font-size:16px; padding:0 8px 20px; }
+    aside a { display:block; padding:8px; border-radius:6px; color:var(--text-2); text-decoration:none; }
+    aside a[aria-current="page"], aside a:hover { background:#EEF2FF; color:var(--accent); }
+    main { flex:1; padding:28px 32px; min-width:0; }
+    header { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:20px; flex-wrap:wrap; }
+    h1 { font-size:20px; margin:0; }
+    button { font:inherit; border-radius:6px; padding:8px 14px; border:1px solid var(--line); background:var(--surface); cursor:pointer; }
+    button.primary { background:var(--accent); border-color:var(--accent); color:#fff; }
+    section { display:none; }
+    section.active { display:block; }
+    table { width:100%; border-collapse:collapse; background:var(--surface); border:1px solid var(--line); border-radius:8px; overflow:hidden; }
+    th, td { text-align:left; padding:10px 14px; border-bottom:1px solid var(--line); }
+    th { font-size:12px; color:var(--text-2); font-weight:600; }
+    .card { background:var(--surface); border:1px solid var(--line); border-radius:8px; padding:18px; margin-bottom:16px; max-width:560px; }
+    label { display:block; font-weight:600; margin:12px 0 4px; }
+    input, select { font:inherit; width:100%; padding:8px 10px; border:1px solid var(--line); border-radius:6px; }
+    .banner { background:#FFF7E6; border:1px solid #F5C26B; padding:10px 14px; border-radius:6px; margin-bottom:16px; }
+    .banner code { background:#fff; padding:1px 5px; border-radius:4px; }
+    .tabs { display:flex; gap:4px; margin-bottom:16px; }
+    .tabs button[aria-selected="true"] { border-color:var(--accent); color:var(--accent); }
+  </style>
+</head>
+<body>
+  <aside>
+    <div class="brand">Ledgerly</div>
+    <nav aria-label="Main">
+      <a href="#invoices" data-testid="nav-invoices">Invoices</a>
+      <a href="#customers" data-testid="nav-customers">Customers</a>
+      <a href="#settings" data-testid="nav-settings">Settings</a>
+    </nav>
+  </aside>
+
+  <main>
+    <div id="agent-banner" class="banner" hidden>
+      No agent ID. Open this page as <code>?agent=&lt;your agent id&gt;</code>. You'll find the ID on the agent's Install page in the dashboard.
+    </div>
+
+    <section id="invoices">
+      <header>
+        <h1>Invoices</h1>
+        <div>
+          <button data-testid="export-csv">Export CSV</button>
+          <button class="primary" data-testid="new-invoice" aria-label="New invoice">New invoice</button>
+        </div>
+      </header>
+      <table>
+        <thead><tr><th>Number</th><th>Customer</th><th>Amount</th><th>Status</th></tr></thead>
+        <tbody>
+          <tr><td>INV-1042</td><td>Northwind Ltd</td><td>£1,250.00</td><td>Paid</td></tr>
+          <tr><td>INV-1043</td><td>Brightside Studio</td><td>£480.00</td><td>Overdue</td></tr>
+          <tr><td>INV-1044</td><td>Kola Foods</td><td>£3,900.00</td><td>Draft</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="customers">
+      <header>
+        <h1>Customers</h1>
+        <button class="primary" data-testid="add-customer">Add customer</button>
+      </header>
+      <table>
+        <thead><tr><th>Name</th><th>Email</th><th>Open invoices</th></tr></thead>
+        <tbody>
+          <tr><td>Northwind Ltd</td><td>accounts@northwind.test</td><td>0</td></tr>
+          <tr><td>Brightside Studio</td><td>hello@brightside.test</td><td>1</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="settings">
+      <header><h1>Settings</h1></header>
+      <div class="tabs" role="tablist">
+        <button role="tab" aria-selected="true" data-testid="tab-general">General</button>
+        <button role="tab" aria-selected="false" data-testid="tab-billing">Billing</button>
+        <button role="tab" aria-selected="false" data-testid="tab-team">Team</button>
+      </div>
+      <div class="card">
+        <label for="company">Company name</label>
+        <input id="company" value="Acme Trading" />
+        <label for="currency">Default currency</label>
+        <select id="currency"><option>GBP</option><option>USD</option><option>EUR</option><option>NGN</option></select>
+        <label for="terms">Payment terms (days)</label>
+        <input id="terms" type="number" value="30" />
+        <div style="margin-top:16px"><button class="primary" data-testid="save-settings">Save changes</button></div>
+      </div>
+    </section>
+  </main>
+
+  <script src="../dist/skavelo.min.js"></script>
+  <script>
+    // Hash routing so show mode can move between "pages".
+    function route() {
+      const id = (location.hash || '#invoices').slice(1);
+      document.querySelectorAll('section').forEach((s) => s.classList.toggle('active', s.id === id));
+      document.querySelectorAll('nav a').forEach((a) => {
+        a.toggleAttribute('aria-current', a.getAttribute('href') === '#' + id);
+        if (a.getAttribute('href') === '#' + id) a.setAttribute('aria-current', 'page');
+      });
+    }
+    window.addEventListener('hashchange', route);
+    route();
+
+    // This page is static, so it fakes Ledgerly's own API for actions (skills) to call.
+    // A real app needs nothing like this: the widget calls your API with the visitor's session.
+    const realFetch = window.fetch.bind(window);
+    window.fetch = (input, init = {}) => {
+      const url = new URL(typeof input === 'string' ? input : input.url, location.href);
+      if (url.origin !== location.origin || !url.pathname.startsWith('/api/')) return realFetch(input, init);
+      console.info('[Playground API]', init.method || 'GET', url.pathname + url.search, init.body || '');
+      const reminder = url.pathname.match(/^\/api\/invoices\/([^/]+)\/remind$/);
+      const status = reminder && init.method === 'POST' ? 200 : 404;
+      return new Promise((r) => setTimeout(() => r(new Response(JSON.stringify({ ok: status === 200 }), {
+        status, headers: { 'Content-Type': 'application/json' },
+      })), 600));
+    };
+
+    const params = new URLSearchParams(location.search);
+    const agentId = params.get('agent');
+    if (!agentId) {
+      document.getElementById('agent-banner').hidden = false;
+    } else {
+      const sk = Skavelo.init({
+        agentId,
+        apiUrl: 'http://localhost:8705/api',
+        user: { id: 'playground-user', plan: 'growth', role: 'admin' },
+        // Try ?icon=ledgerly-icon.svg&accent=%232F6BFF to see a customer's branding.
+        theme: {
+          icon: params.get('icon') || undefined,
+          accent: params.get('accent') || undefined,
+        },
+      });
+      window.sk = sk;
+    }
+  </script>
+</body>
+</html>
