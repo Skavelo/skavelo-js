@@ -13,7 +13,7 @@ You need an agent ID from your Skavelo dashboard (the agent's **Install** tab). 
 Any site, CMS or server rendered app. Put it just before `</body>` in your shared layout:
 
 ```html
-<script src="https://cdn.skavelo.com/sdk/v1/skavelo.min.js"></script>
+<script src="https://cdn.skavelo.com/skavelo.js"></script>
 <script>
   Skavelo.init({ agentId: 'YOUR_AGENT_ID' });
 </script>

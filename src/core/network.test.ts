@@ -36,3 +36,18 @@ describe('NetworkClient refusals', () => {
     expect(err.status).toBe(403);
   });
 });
+
+describe('NetworkClient routes', () => {
+  // Published widgets call these paths for as long as customers run them, so they must not drift.
+  it('calls the versioned SDK routes', async () => {
+    const fetchMock = vi.fn(async () => json(200, {}));
+    vi.stubGlobal('fetch', fetchMock);
+    const net = new NetworkClient('https://api.test/api/', 'a');
+    await net.config();
+    await net.ask(payload).catch(() => {});
+    expect(fetchMock.mock.calls.map((c) => String((c as unknown[])[0]))).toEqual([
+      'https://api.test/api/sdk/v1/config',
+      'https://api.test/api/sdk/v1/ask',
+    ]);
+  });
+});

@@ -3,6 +3,9 @@ import type { AskPayload, AskResponse, FeedbackPayload, RemoteConfig, UserContex
 /** Where the widget talks to Skavelo unless `apiUrl` says otherwise. */
 export const DEFAULT_API_URL = 'https://api.skavelo.com/api';
 
+/** The widget's routes on the API. Breaking changes ship under a new version; this one keeps working. */
+export const SDK_ROUTES = '/sdk/v1';
+
 export class NetworkClient {
   private apiUrl: string;
   private agentId: string;
@@ -18,7 +21,7 @@ export class NetworkClient {
   }
 
   async ask(payload: AskPayload, signal?: AbortSignal): Promise<AskResponse> {
-    const res = await this.request<AskResponse>('POST', `/sdk/ask`, payload, signal);
+    const res = await this.request<AskResponse>('POST', `${SDK_ROUTES}/ask`, payload, signal);
     this.conversationId = res.conversationId;
     return res;
   }
@@ -33,7 +36,7 @@ export class NetworkClient {
     handlers: { onText: (text: string) => void },
     signal?: AbortSignal,
   ): Promise<AskResponse> {
-    const res = await fetch(`${this.apiUrl}/sdk/ask/stream`, {
+    const res = await fetch(`${this.apiUrl}${SDK_ROUTES}/ask/stream`, {
       method: 'POST',
       signal,
       credentials: 'omit',
@@ -79,19 +82,19 @@ export class NetworkClient {
   }
 
   config(signal?: AbortSignal): Promise<RemoteConfig> {
-    return this.request<RemoteConfig>('GET', '/sdk/config', undefined, signal);
+    return this.request<RemoteConfig>('GET', `${SDK_ROUTES}/config`, undefined, signal);
   }
 
   async feedback(payload: FeedbackPayload): Promise<void> {
-    await this.request('POST', `/sdk/feedback`, payload);
+    await this.request('POST', `${SDK_ROUTES}/feedback`, payload);
   }
 
   async skillResult(payload: { messageId: string; outcome: 'approved' | 'rejected' | 'succeeded' | 'failed'; detail?: string }): Promise<void> {
-    await this.request('POST', '/sdk/skill-result', payload);
+    await this.request('POST', `${SDK_ROUTES}/skill-result`, payload);
   }
 
   async identify(conversationId: string, user: UserContext): Promise<void> {
-    await this.request('POST', `/sdk/identify`, { conversationId, user });
+    await this.request('POST', `${SDK_ROUTES}/identify`, { conversationId, user });
   }
 
   private async request<T>(method: string, path: string, body?: unknown, signal?: AbortSignal): Promise<T> {

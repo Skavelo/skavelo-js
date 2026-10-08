@@ -2,7 +2,7 @@ import type { EventHandler, RemoteConfig, SkavelEvent, SkaveloCfg, UserContext }
 import { SkavelInstance } from './skavelo';
 import { currentDevice, pickAgent, visitorBucket, watchUrl } from './core/targeting';
 import { takePendingUser } from './core/pending-user';
-import { DEFAULT_API_URL } from './core/network';
+import { DEFAULT_API_URL, SDK_ROUTES } from './core/network';
 
 /**
  * One snippet for a workspace with several agents: loads them all once, then shows the agent whose
@@ -27,7 +27,7 @@ export class SiteRouter {
   private async load() {
     const apiUrl = (this.cfg.apiUrl ?? DEFAULT_API_URL).replace(/\/$/, '');
     try {
-      const res = await fetch(`${apiUrl}/sdk/site`, {
+      const res = await fetch(`${apiUrl}${SDK_ROUTES}/site`, {
         headers: { 'X-Workspace-Id': this.cfg.workspaceId },
         credentials: 'omit',
       });

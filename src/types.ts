@@ -172,7 +172,7 @@ export type SkavelEvent =
 
 export type EventHandler<T extends SkavelEvent = SkavelEvent> = (event: T) => void;
 
-/** Widget settings saved in the dashboard, served by GET /sdk/config. */
+/** Widget settings saved in the dashboard, served by GET /sdk/v1/config. */
 export interface RemoteConfig {
   id: string;
   name: string;
