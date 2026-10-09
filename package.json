@@ -39,7 +39,8 @@
     "publish:cdn": "bash scripts/publish-cdn.sh",
     "build:release": "NODE_ENV=production rollup -c",
     "check:package": "node scripts/check-package.mjs",
-    "prepublishOnly": "npm run build:release && npm run check:package"
+    "prepublishOnly": "npm run build:release && npm run check:package",
+    "prepare": "husky"
   },
   "devDependencies": {
     "@rollup/plugin-commonjs": "^28.0.0",
@@ -49,6 +50,7 @@
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "happy-dom": "^20.14.5",
+    "husky": "^9.1.7",
     "react-dom": "19.3.0",
     "rollup": "^4.0.0",
     "rollup-plugin-dts": "^6.1.0",
