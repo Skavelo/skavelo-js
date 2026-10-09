@@ -46,7 +46,7 @@ export class NetworkClient {
       if (signal?.aborted) throw err;
       throw new StreamUnavailable(String(err));
     });
-    if (res.status === 403 || res.status === 429) throw await refusal(res);
+    if (res.status === 401 || res.status === 403 || res.status === 429) throw await refusal(res);
     if (!res.ok || !res.body || !(res.headers.get('content-type') ?? '').includes('text/event-stream')) {
       throw new StreamUnavailable(`status ${res.status}`);
     }
@@ -69,7 +69,7 @@ export class NetworkClient {
         if (event === 'meta') this.conversationId = parsed.conversationId;
         else if (event === 'delta') handlers.onText(parsed.text);
         else if (event === 'error') {
-          if (parsed.status === 403 || parsed.status === 429) throw new Refused(parsed.message ?? 'Refused', parsed.status);
+          if (parsed.status === 401 || parsed.status === 403 || parsed.status === 429) throw new Refused(parsed.message ?? 'Refused', parsed.status);
           throw new Error(parsed.message ?? 'Failed to process question');
         }
         else if (event === 'done') {
@@ -110,7 +110,7 @@ export class NetworkClient {
       body: body ? JSON.stringify(body) : undefined,
     });
 
-    if (res.status === 403 || res.status === 429) throw await refusal(res);
+    if (res.status === 401 || res.status === 403 || res.status === 429) throw await refusal(res);
     if (!res.ok) {
       const text = await res.text().catch(() => '');
       throw new Error(`Skavelo API ${res.status}: ${text}`);

@@ -84,6 +84,8 @@ export interface AskPayload {
   elements: ElementDescriptor[];
   conversationId?: string;
   user?: UserContext;
+  /** Set when the visitor clicked a suggestion; the server acts on its instruction. */
+  suggestionId?: string;
 }
 
 export interface ElementDescriptor {
@@ -188,14 +190,40 @@ export interface RemoteConfig {
 export interface Targeting {
   pages?: { mode: 'all' | 'only' | 'except'; patterns: string[] };
   audience?: 'everyone' | 'signed_in' | 'signed_out';
-  attributes?: { key: string; values: string[] }[];
+  attributes?: AttributeRule[];
   devices?: 'all' | 'desktop' | 'mobile';
   rollout?: number;
 }
 
+/** plan is trial, or plan is not enterprise. */
+export interface AttributeRule {
+  key: string;
+  op?: 'is' | 'is_not';
+  values: string[];
+}
+
+/** Where a suggestion shows and to whom. Countries were already checked by the API. */
+export interface SuggestionRules {
+  /** Allowed site entries like https://app.example.com or https://*.example.com; empty means all. */
+  sites?: string[];
+  pages?: { mode: 'all' | 'only' | 'except'; patterns: string[] };
+  audience?: 'everyone' | 'signed_in' | 'signed_out';
+  attributes?: AttributeRule[];
+  devices?: 'all' | 'desktop' | 'mobile';
+}
+
+/** A prompt on the widget. Clicking it asks the agent to carry out an instruction kept on the server. */
+export interface Suggestion {
+  id?: string;
+  title: string;
+  rules?: SuggestionRules;
+}
+
 export interface Suggestions {
-  default: string[];
-  pages: { pattern: string; questions: string[] }[];
+  items?: Suggestion[];
+  /** Older servers sent plain questions: a default set and sets per page. */
+  default?: string[];
+  pages?: { pattern: string; questions: string[] }[];
 }
 
 // ─── Feedback ─────────────────────────────────────────────────────────────────

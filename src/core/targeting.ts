@@ -1,4 +1,4 @@
-import type { Suggestions, Targeting, UserContext } from '../types';
+import type { AttributeRule, Suggestion, SuggestionRules, Suggestions, Targeting, UserContext } from '../types';
 
 /** What the widget knows about this visit when deciding whether to show. */
 export interface VisitContext {
@@ -7,6 +7,8 @@ export interface VisitContext {
   device: 'desktop' | 'mobile';
   /** 0 to 99, stable for this browser, for gradual rollouts. */
   bucket: number;
+  /** The site, like https://app.example.com, for rules aimed at one of several sites. */
+  origin?: string;
 }
 
 /**
@@ -35,14 +37,7 @@ export function matchesTargeting(t: Targeting | undefined, ctx: VisitContext): b
   const signedIn = !!ctx.user?.id;
   if (t.audience === 'signed_in' && !signedIn) return false;
   if (t.audience === 'signed_out' && signedIn) return false;
-  for (const rule of t.attributes ?? []) {
-    // Top level fields (plan, role, tags) first, then traits.
-    const value = ctx.user?.[rule.key] ?? (ctx.user?.traits as Record<string, unknown> | undefined)?.[rule.key];
-    if (value === undefined || value === null) return false;
-    const wanted = rule.values.map((v) => v.toLowerCase());
-    const actual = (Array.isArray(value) ? value : [value]).map((v) => String(v).toLowerCase());
-    if (!actual.some((v) => wanted.includes(v))) return false;
-  }
+  if (!(t.attributes ?? []).every((rule) => attributeMatches(rule, ctx.user))) return false;
   if (t.devices && t.devices !== 'all' && t.devices !== ctx.device) return false;
   if (t.rollout !== undefined && t.rollout < 100 && ctx.bucket >= t.rollout) return false;
   return true;
@@ -57,10 +52,50 @@ export function pickAgent<T extends { targeting?: Targeting }>(agents: T[], ctx:
   return matching.find((a) => a.targeting?.pages?.mode === 'only') ?? matching[0] ?? null;
 }
 
-/** The suggestions for this page: a page set whose pattern matches, or the default set. */
-export function suggestionsFor(s: Suggestions | undefined, path: string): string[] {
+/**
+ * "plan is trial" passes when one of the visitor's values is listed; "plan is not enterprise" when
+ * none is. A visitor without the value fails "is" and passes "is not".
+ */
+export function attributeMatches(rule: AttributeRule, user: UserContext | undefined): boolean {
+  // Top level fields (plan, role, tags) first, then traits.
+  const value = user?.[rule.key] ?? (user?.traits as Record<string, unknown> | undefined)?.[rule.key];
+  const wanted = rule.values.map((v) => v.toLowerCase());
+  const actual = value === undefined || value === null ? [] : (Array.isArray(value) ? value : [value]).map((v) => String(v).toLowerCase());
+  const hit = actual.some((v) => wanted.includes(v));
+  return rule.op === 'is_not' ? !hit : hit;
+}
+
+/**
+ * Whether this site is one of the entries, in the same format as the agent's allowed sites:
+ * https://app.example.com, https://*.example.com (subdomains only), http://localhost:*.
+ */
+export function siteMatches(entries: string[], origin: string): boolean {
+  let here: URL;
+  try { here = new URL(origin); } catch { return false; }
+  return entries.some((entry) => {
+    const m = /^(https?):\/\/(\*\.)?([^:/]+)(?::(\d+|\*))?\/?$/i.exec(entry.trim());
+    if (!m) return false;
+    const [, scheme, wildcard, host, port] = m;
+    if (`${scheme.toLowerCase()}:` !== here.protocol) return false;
+    const h = host.toLowerCase();
+    const hostOk = wildcard ? here.hostname.endsWith(`.${h}`) : here.hostname === h;
+    return hostOk && (port === '*' || (port ?? '') === here.port);
+  });
+}
+
+function rulesMatch(r: SuggestionRules | undefined, ctx: VisitContext): boolean {
+  if (!r) return true;
+  if (r.sites?.length && !(ctx.origin && siteMatches(r.sites, ctx.origin))) return false;
+  return matchesTargeting({ pages: r.pages, audience: r.audience, attributes: r.attributes, devices: r.devices }, ctx);
+}
+
+/** Up to four suggestions for this visit, in the order they were saved. */
+export function suggestionsFor(s: Suggestions | undefined, ctx: VisitContext): Suggestion[] {
   if (!s) return [];
-  return s.pages.find((p) => pathMatches(p.pattern, path))?.questions ?? s.default;
+  if (Array.isArray(s.items)) return s.items.filter((item) => rulesMatch(item.rules, ctx)).slice(0, 4);
+  // Older servers: this page's set, or the default set.
+  const questions = s.pages?.find((p) => pathMatches(p.pattern, ctx.path))?.questions ?? s.default ?? [];
+  return questions.slice(0, 4).map((title) => ({ title }));
 }
 
 export function currentDevice(): 'desktop' | 'mobile' {

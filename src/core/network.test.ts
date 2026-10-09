@@ -29,6 +29,13 @@ describe('NetworkClient refusals', () => {
     expect(err).toBeInstanceOf(StreamUnavailable);
   });
 
+  it('refuses config for an agent that no longer exists', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => json(401, { message: 'Invalid agent ID' })));
+    const err = await new NetworkClient('https://api.test/api', 'deleted').config().catch((e) => e);
+    expect(err).toBeInstanceOf(Refused);
+    expect(err.status).toBe(401);
+  });
+
   it('refuses config from a site that is not allowed', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => json(403, { message: "https://evil.test isn't one of this agent's allowed sites." })));
     const err = await new NetworkClient('https://api.test/api', 'a').config().catch((e) => e);

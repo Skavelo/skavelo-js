@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { matchesTargeting, pathMatches, pickAgent, suggestionsFor } from './targeting';
+import { attributeMatches, matchesTargeting, pathMatches, pickAgent, siteMatches, suggestionsFor } from './targeting';
 
 const ctx = { path: '/billing/invoices', device: 'desktop' as const, bucket: 10 };
 
@@ -54,10 +54,55 @@ describe('pickAgent', () => {
 });
 
 describe('suggestionsFor', () => {
-  const s = { default: ['How do I start?'], pages: [{ pattern: '/billing/*', questions: ['How do refunds work?'] }] };
-  it('uses page suggestions when the page matches', () => {
-    expect(suggestionsFor(s, '/billing/invoices')).toEqual(['How do refunds work?']);
-    expect(suggestionsFor(s, '/home')).toEqual(['How do I start?']);
+  const titles = (list: { title: string }[]) => list.map((x) => x.title);
+  const items = [
+    { id: 'a', title: 'Set up late fees', rules: { sites: ['https://app.acme.com'], pages: { mode: 'only' as const, patterns: ['/billing/*'] } } },
+    { id: 'b', title: 'Compare plans', rules: { pages: { mode: 'only' as const, patterns: ['/billing/*'] }, attributes: [{ key: 'plan', op: 'is_not' as const, values: ['enterprise'] }] } },
+    { id: 'c', title: 'Invite your team', rules: { audience: 'signed_in' as const } },
+    { id: 'd', title: 'Get started' },
+  ];
+
+  it('keeps the suggestions whose rules match this site, page and visitor, in order', () => {
+    const app = { ...ctx, origin: 'https://app.acme.com', user: { id: 'u1', plan: 'trial' } };
+    expect(titles(suggestionsFor({ items }, app))).toEqual(['Set up late fees', 'Compare plans', 'Invite your team', 'Get started']);
+  });
+
+  it('tells sites apart on the same path', () => {
+    const site = { ...ctx, origin: 'https://acme.com' };
+    expect(titles(suggestionsFor({ items }, site))).toEqual(['Compare plans', 'Get started']);
+  });
+
+  it('leaves out visitors on excluded plans', () => {
+    const enterprise = { ...ctx, origin: 'https://acme.com', user: { id: 'u2', plan: 'Enterprise' } };
+    expect(titles(suggestionsFor({ items }, enterprise))).toEqual(['Invite your team', 'Get started']);
+  });
+
+  it('still reads plain questions from older servers', () => {
+    const s = { default: ['How do I start?'], pages: [{ pattern: '/billing/*', questions: ['How do refunds work?'] }] };
+    expect(suggestionsFor(s, ctx)).toEqual([{ title: 'How do refunds work?' }]);
+    expect(suggestionsFor(s, { ...ctx, path: '/home' })).toEqual([{ title: 'How do I start?' }]);
+  });
+});
+
+describe('attributeMatches', () => {
+  it('handles is and is not, including visitors without the value', () => {
+    expect(attributeMatches({ key: 'plan', values: ['trial'] }, { id: '1', plan: 'trial' })).toBe(true);
+    expect(attributeMatches({ key: 'plan', values: ['trial'] }, undefined)).toBe(false);
+    expect(attributeMatches({ key: 'plan', op: 'is_not', values: ['enterprise'] }, undefined)).toBe(true);
+    expect(attributeMatches({ key: 'tags', op: 'is_not', values: ['beta'] }, { id: '1', tags: ['early', 'beta'] })).toBe(false);
+  });
+});
+
+describe('siteMatches', () => {
+  it.each([
+    [['https://app.acme.com'], 'https://app.acme.com', true],
+    [['https://app.acme.com'], 'https://acme.com', false],
+    [['https://*.acme.com'], 'https://docs.acme.com', true],
+    [['https://*.acme.com'], 'https://acme.com', false],
+    [['http://localhost:*'], 'http://localhost:3000', true],
+    [['https://acme.com'], 'http://acme.com', false],
+  ])('%j on %s is %s', (entries, origin, expected) => {
+    expect(siteMatches(entries, origin)).toBe(expected);
   });
 });
 

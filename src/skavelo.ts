@@ -54,7 +54,7 @@ export class SkavelInstance {
 
     this.highlight = new HighlightOverlay(root, cfg.theme?.accent);
     this.widget = new Widget(root, cfg.theme, {
-      onAsk: (q) => this.runAsk(q),
+      onAsk: (q, suggestionId) => this.runAsk(q, suggestionId),
       onStop: () => this.inFlight?.abort(),
       onOpen: () => this.emit({ type: 'open' }),
       onClose: () => this.emit({ type: 'close' }),
@@ -81,10 +81,13 @@ export class SkavelInstance {
     this.net.config(controller.signal)
       .then((remote) => this.applyRemote(remote))
       .catch((err) => {
-        // Not allowed on this site: stay out of sight instead of offering help that can't answer.
-        if (err instanceof Refused && err.status === 403) {
-          console.warn(`[Skavelo] ${err.message}`);
-          this.widget.destroy();
+        // Not allowed on this site, or the agent no longer exists (deleted, or a mistyped ID):
+        // stay out of sight instead of offering help that can't answer.
+        if (err instanceof Refused && (err.status === 401 || err.status === 403)) {
+          console.warn(err.status === 401
+            ? `[Skavelo] No agent with ID ${this.cfg.agentId}. It may have been deleted; check the ID on the agent's Install page, or remove the snippet.`
+            : `[Skavelo] ${err.message}`);
+          this.destroy();
           return;
         }
         this.widget.setReady(true);
@@ -110,10 +113,10 @@ export class SkavelInstance {
    */
   private applyTargeting() {
     if (!this.remote) return;
-    const ctx = { path: location.pathname + location.hash, user: this.cfg.user, device: currentDevice(), bucket: this.bucket };
+    const ctx = { path: location.pathname + location.hash, user: this.cfg.user, device: currentDevice(), bucket: this.bucket, origin: location.origin };
     const show = this.remote.available !== false && (!!this.showMode || matchesTargeting(this.remote.targeting, ctx));
     this.widget.setHidden(!show);
-    this.widget.setSuggestions(suggestionsFor(this.remote.suggestions, ctx.path));
+    this.widget.setSuggestions(suggestionsFor(this.remote.suggestions, ctx));
   }
 
   // ─── Public API ────────────────────────────────────────────────────────────
@@ -188,7 +191,7 @@ export class SkavelInstance {
 
   // ─── Asking ────────────────────────────────────────────────────────────────
 
-  private async runAsk(question: string) {
+  private async runAsk(question: string, suggestionId?: string) {
     // A new question replaces any walkthrough in progress.
     if (this.showMode) this.endWalkthrough();
 
@@ -203,6 +206,7 @@ export class SkavelInstance {
       conversationId: this.session.getConversationId(),
       // Who's asking, so even the first answer can fit their plan and role.
       ...(this.cfg.user?.id ? { user: this.cfg.user } : {}),
+      ...(suggestionId ? { suggestionId } : {}),
     };
     const stream = this.widget.beginStream();
 

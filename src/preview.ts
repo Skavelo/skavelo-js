@@ -6,11 +6,12 @@ export interface PreviewOptions {
   view: PreviewView;
   scheme: 'light' | 'dark';
   branding: boolean;
-  /** Starter questions to show on the input view. */
+  /** Suggestion titles, shown over the launcher and on the input view. */
   suggestions?: string[];
 }
 
 const noop = () => {};
+const titles = (o: PreviewOptions) => (o.suggestions ?? []).map((title) => ({ title }));
 
 /**
  * Renders the real widget with sample content inside `container` (which should be
@@ -35,9 +36,10 @@ export function mountPreview(container: HTMLElement, theme: AppliedTheme, option
 
     switch (current.options.view) {
       case 'launcher':
+        widget.setSuggestions(titles(current.options));
         break;
       case 'input':
-        widget.setSuggestions(current.options.suggestions ?? []);
+        widget.setSuggestions(titles(current.options));
         widget.showView('composer');
         break;
       case 'chat':
@@ -70,7 +72,7 @@ export function mountPreview(container: HTMLElement, theme: AppliedTheme, option
       if (viewChanged || !widget) render();
       else {
         widget.applyTheme({ ...theme, branding: options.branding });
-        widget.setSuggestions(options.view === 'input' ? options.suggestions ?? [] : []);
+        widget.setSuggestions(options.view === 'input' || options.view === 'launcher' ? titles(options) : []);
       }
     },
     destroy() {

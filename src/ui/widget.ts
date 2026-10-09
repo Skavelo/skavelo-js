@@ -1,4 +1,4 @@
-import type { ThemeCfg, FeedbackRating } from '../types';
+import type { ThemeCfg, FeedbackRating, Suggestion } from '../types';
 
 const FONT = `'Instrument Sans', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif`;
 
@@ -92,10 +92,37 @@ const WIDGET_CSS = `
   }
   .sk-composer .sk-mark { color: var(--sk-text-3); }
 
-  /* Starter questions, above the input bar until the first question is asked. */
-  .sk-suggest { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; max-width: min(540px, calc(100vw - 32px)); }
+  /* Suggestions, above the launcher and the input bar until the first question is asked. */
+  .sk-suggest { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; max-width: min(540px, calc(100vw - 32px)); pointer-events: none; }
+  .sk-suggest > * { pointer-events: auto; }
   .sk-pos-center .sk-suggest { justify-content: center; }
   .sk-pos-right .sk-suggest { justify-content: flex-end; }
+  /* Over the launcher they float on the page, so they arrive gently and can be put away. */
+  .sk-suggest--float { flex-direction: column; flex-wrap: nowrap; max-width: min(340px, calc(100vw - 32px)); }
+  .sk-pos-right .sk-suggest--float { align-items: flex-end; }
+  .sk-pos-left .sk-suggest--float { align-items: flex-start; }
+  .sk-pos-center .sk-suggest--float { align-items: center; }
+  .sk-suggest--float .sk-chip { box-shadow: var(--sk-shadow); animation: sk-in 260ms cubic-bezier(.2,.8,.2,1) both; }
+  .sk-suggest--float .sk-chip:nth-child(2) { animation-delay: 60ms; }
+  .sk-suggest--float .sk-chip:nth-child(3) { animation-delay: 120ms; }
+  @media (max-width: 480px) { .sk-suggest--float .sk-chip:nth-child(n+3) { display: none; } }
+  /* The top chip carries the close button just outside it, so the chip itself stays aligned. */
+  .sk-suggest-row { position: relative; display: flex; }
+  .sk-suggest-row .sk-suggest-x { position: absolute; top: 0; bottom: 0; margin: auto 0; left: calc(100% + 6px); }
+  .sk-pos-right .sk-suggest-row .sk-suggest-x { left: auto; right: calc(100% + 6px); }
+  .sk-suggest-x {
+    width: 24px;
+    height: 24px;
+    border-radius: 999px;
+    display: grid;
+    place-items: center;
+    border: 1px solid var(--sk-line);
+    background: var(--sk-surface);
+    color: var(--sk-text-2);
+    box-shadow: 0 1px 2px rgba(24,24,27,.06);
+    animation: sk-in 260ms cubic-bezier(.2,.8,.2,1) both;
+  }
+  .sk-suggest-x:hover { color: var(--sk-text); }
   .sk-chip {
     padding: 8px 14px;
     border-radius: 999px;
@@ -434,7 +461,8 @@ function renderText(text: string): string {
 }
 
 export interface WidgetEvents {
-  onAsk: (question: string) => void;
+  /** suggestionId is set when the question came from a suggestion. */
+  onAsk: (question: string, suggestionId?: string) => void;
   onStop: () => void;
   onOpen: () => void;
   onClose: () => void;
@@ -463,7 +491,11 @@ export class Widget {
   private composer: HTMLDivElement;
   private composerInput: HTMLInputElement;
   private suggestEl: HTMLDivElement;
-  private suggestions: string[] = [];
+  private suggestions: Suggestion[] = [];
+  /** Over the launcher, suggestions wait a moment after the page loads, and stay away once dismissed. */
+  private floatReady = false;
+  private floatDismissed = false;
+  private floatTimer = 0;
   private panel: HTMLDivElement;
   private titleEl: HTMLSpanElement;
   private bodyEl: HTMLDivElement;
@@ -498,9 +530,9 @@ export class Widget {
     this.dock.className = this.preview ? 'sk-dock sk-preview' : 'sk-dock';
 
     this.dock.innerHTML = `
-      <button class="sk-pill" type="button" aria-haspopup="dialog"><span class="sk-brand"></span><span class="sk-label"></span></button>
+      <div class="sk-suggest" role="list" aria-label="Suggestions" hidden></div>
 
-      <div class="sk-suggest" role="list" aria-label="Suggested questions" hidden></div>
+      <button class="sk-pill" type="button" aria-haspopup="dialog"><span class="sk-brand"></span><span class="sk-label"></span></button>
 
       <div class="sk-composer" hidden>
         <span class="sk-brand"></span>
@@ -623,29 +655,57 @@ export class Widget {
     this.events.onAsk(q);
   }
 
-  /** Starter questions for this page; shown with the input bar until someone asks something. */
-  setSuggestions(questions: string[]) {
-    this.suggestions = questions.slice(0, 4);
+  /**
+   * Suggestions for this page. They show above the launcher without opening anything (up to
+   * three, dismissible for the visit), and above the input bar, until someone asks something.
+   */
+  setSuggestions(suggestions: Suggestion[]) {
+    this.suggestions = suggestions.slice(0, 4);
+    if (!this.floatReady && !this.floatTimer && this.suggestions.length) {
+      // In the dashboard preview they show straight away.
+      if (this.preview) this.floatReady = true;
+      else this.floatTimer = window.setTimeout(() => { this.floatReady = true; this.renderSuggestions(); }, 1200);
+    }
     this.renderSuggestions();
   }
 
   private renderSuggestions() {
-    const show = this.view === 'composer' && !this.hasConversation && this.suggestions.length > 0;
+    try { this.floatDismissed ||= sessionStorage.getItem('_sk_suggest_off') === '1'; } catch {}
+    const float = this.view === 'pill' && this.floatReady && !this.floatDismissed;
+    const show = !this.hasConversation && this.suggestions.length > 0 && (this.view === 'composer' || float);
     this.suggestEl.hidden = !show;
+    this.suggestEl.classList.toggle('sk-suggest--float', float);
     if (!show) return;
-    this.suggestEl.replaceChildren(...this.suggestions.map((q) => {
+    const chips: HTMLElement[] = (float ? this.suggestions.slice(0, 3) : this.suggestions).map((s) => {
       const chip = document.createElement('button');
       chip.type = 'button';
       chip.className = 'sk-chip';
       chip.setAttribute('role', 'listitem');
-      chip.textContent = q;
+      chip.textContent = s.title;
       chip.addEventListener('click', () => {
         if (this.loading) return;
-        this.showQuestion(q);
-        this.events.onAsk(q);
+        this.showQuestion(s.title);
+        this.events.onAsk(s.title, s.id);
       });
       return chip;
-    }));
+    });
+    if (float && chips.length) {
+      const x = document.createElement('button');
+      x.type = 'button';
+      x.className = 'sk-suggest-x';
+      x.setAttribute('aria-label', 'Hide suggestions');
+      x.innerHTML = ICONS.closeSmall;
+      x.addEventListener('click', () => {
+        this.floatDismissed = true;
+        try { if (!this.preview) sessionStorage.setItem('_sk_suggest_off', '1'); } catch {}
+        this.renderSuggestions();
+      });
+      const row = document.createElement('div');
+      row.className = 'sk-suggest-row';
+      row.append(chips[0], x);
+      chips[0] = row;
+    }
+    this.suggestEl.replaceChildren(...chips);
   }
 
   /** Hides the whole widget, for pages or visitors its targeting rules leave out. */
@@ -954,6 +1014,7 @@ export class Widget {
   }
 
   destroy() {
+    clearTimeout(this.floatTimer);
     this.dock.remove();
   }
 }
