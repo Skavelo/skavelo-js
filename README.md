@@ -119,7 +119,7 @@ Where the widget shows (pages, countries, signed in users, plans, devices, gradu
 | `on(event, handler)` / `off(event, handler)` | Listens for widget events. |
 | `destroy()` | Removes the widget from the page. |
 
-Events: `open`, `close`, `answer`, `step`, `step_complete`, `walkthrough_complete`, `walkthrough_abandon`, `do_approved`, `do_rejected`, `handoff`.
+Events: `open`, `close`, `answer`, `step`, `step_complete`, `walkthrough_complete`, `walkthrough_abandon`, `walkthrough_replay`, `do_approved`, `do_rejected`, `handoff`.
 
 ## Security and privacy
 

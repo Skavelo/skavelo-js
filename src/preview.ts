@@ -1,4 +1,5 @@
 import { Widget, type AppliedTheme } from './ui/widget';
+import { HighlightOverlay } from './ui/highlight';
 
 export type PreviewView = 'launcher' | 'input' | 'chat' | 'walkthrough';
 
@@ -15,7 +16,8 @@ const titles = (o: PreviewOptions) => (o.suggestions ?? []).map((title) => ({ ti
 
 /**
  * Renders the real widget with sample content inside `container` (which should be
- * position: relative). Used by the dashboard's Appearance page.
+ * position: relative). Used by the dashboard's Appearance page. On the walkthrough view,
+ * an element in the container marked data-sk-preview-target gets the step highlight.
  */
 export function mountPreview(container: HTMLElement, theme: AppliedTheme, options: PreviewOptions) {
   const host = document.createElement('div');
@@ -25,9 +27,13 @@ export function mountPreview(container: HTMLElement, theme: AppliedTheme, option
 
   let widget: Widget | null = null;
   let current = { theme, options };
+  const highlight = new HighlightOverlay(root, theme.accent, { contained: true });
+  const target = () => container.querySelector('[data-sk-preview-target]');
 
   const render = () => {
     widget?.destroy();
+    highlight.hide();
+    highlight.setTheme({ accent: current.theme.accent, highlight: current.theme.highlight ?? 'beacon' });
     widget = new Widget(root, { ...current.theme, branding: current.options.branding }, {
       onAsk: noop, onStop: noop, onOpen: noop, onClose: noop,
       onStepNext: noop, onStepBack: noop, onFeedback: noop,
@@ -59,6 +65,7 @@ export function mountPreview(container: HTMLElement, theme: AppliedTheme, option
           total: 3,
           found: true,
         });
+        { const el = target(); if (el) highlight.point(el); }
         break;
     }
   };
@@ -72,10 +79,13 @@ export function mountPreview(container: HTMLElement, theme: AppliedTheme, option
       if (viewChanged || !widget) render();
       else {
         widget.applyTheme({ ...theme, branding: options.branding });
+        // A new style rebuilds the highlight, so its entrance plays again.
+        highlight.setTheme({ accent: theme.accent, highlight: theme.highlight ?? 'beacon' });
         widget.setSuggestions(options.view === 'input' || options.view === 'launcher' ? titles(options) : []);
       }
     },
     destroy() {
+      highlight.destroy();
       widget?.destroy();
       host.remove();
     },

@@ -55,9 +55,17 @@ export interface UserContext {
   [key: string]: unknown;
 }
 
+/** How a walkthrough marks the element to click. */
+export type HighlightStyle = "beacon" | "spotlight" | "trace" | "ring";
+
 export interface ThemeCfg {
   /** Accent / highlight colour in hex. Defaults to the Skavelo claret. */
   accent?: string;
+  /**
+   * How walkthroughs mark the element to click. Default "beacon": a ring with a pulsing dot.
+   * "spotlight" dims the rest of the page, "trace" draws an outline, "ring" is a plain ring.
+   */
+  highlight?: HighlightStyle;
   /** Widget position on screen. Default "bottom-center". */
   position?: "bottom-center" | "bottom-right" | "bottom-left";
   /** Launcher text. Default "Get help". */
@@ -86,6 +94,19 @@ export interface AskPayload {
   user?: UserContext;
   /** Set when the visitor clicked a suggestion; the server acts on its instruction. */
   suggestionId?: string;
+  /** True when "Talk to a person" can show on this page. */
+  canHandoff?: boolean;
+  /** What the app returned for a lookup Skavelo asked for; finishes the same question. */
+  lookup?: LookupResult;
+}
+
+export interface LookupResult {
+  /** The reply that asked for the lookup. */
+  messageId: string;
+  /** HTTP status, or 0 when the app couldn't be reached. */
+  status: number;
+  /** The response, shortened. */
+  body: string;
 }
 
 export interface ElementDescriptor {
@@ -101,7 +122,7 @@ export interface ElementDescriptor {
   interactive: boolean;
 }
 
-export type ResponseMode = "answer" | "show" | "do";
+export type ResponseMode = "answer" | "show" | "do" | "look";
 
 export interface AskResponse {
   conversationId: string;
@@ -112,6 +133,10 @@ export interface AskResponse {
   intro?: string;
   show?: ShowPayload;
   do?: DoPayload;
+  /** Skavelo needs the visitor's own data first: run this and ask again with the result. */
+  look?: LookPayload;
+  /** The agent couldn't help or the visitor asked for a person: offer one under this answer. */
+  handoff?: boolean;
 }
 
 export interface AnswerPayload {
@@ -129,6 +154,8 @@ export interface ShowPayload {
   workflowId: string;
   /** Workflow name, shown as the walkthrough title. */
   name?: string;
+  /** The visitor asked Skavelo to do it: the widget carries out the steps and stops on the last one. */
+  fill?: boolean;
   steps: ShowStep[];
 }
 
@@ -139,6 +166,8 @@ export interface ShowStep {
   /** Selector hints from the product map, tried in order */
   locators: Locator[];
   pageUrlPattern?: string;
+  /** With fill: what to enter in this field, from the visitor's own words. */
+  value?: string;
 }
 
 export interface Locator {
@@ -158,6 +187,14 @@ export interface DoPayload {
   request: { method: string; path: string; body?: Record<string, unknown> };
 }
 
+/** A read of the visitor's own data, run from their browser with their session. Never needs approval. */
+export interface LookPayload {
+  skillId: string;
+  skillName: string;
+  /** Built by the server: always a GET to a path on the same site. */
+  request: { method: "GET"; path: string };
+}
+
 // ─── SDK events ───────────────────────────────────────────────────────────────
 
 export type SkavelEvent =
@@ -165,14 +202,40 @@ export type SkavelEvent =
   | { type: "step_complete"; stepIndex: number }
   | { type: "walkthrough_complete"; workflowId: string }
   | { type: "walkthrough_abandon"; workflowId: string; atStep: number }
+  /** The visitor chose to go through a finished walkthrough again, from step 1. */
+  | { type: "walkthrough_replay"; workflowId: string }
   | { type: "answer"; messageId: string }
   | { type: "do_approved"; skillId: string }
   | { type: "do_rejected"; skillId: string }
-  | { type: "handoff" }
+  /** Skavelo read the visitor's data with a lookup; ok is false when the app refused or failed. */
+  | { type: "lookup"; skillId: string; ok: boolean }
+  | {
+      type: "handoff";
+      conversationId: string;
+      /** Why the visitor was offered a person. */
+      reason: HandoffReason;
+      /** "chat:intercom" (or another chat tool), "email", or "code" when your code handles it. */
+      channel: string;
+      /** A short message for your team: what they asked, and on which page. */
+      summary: string;
+      question?: string;
+      pageUrl: string;
+    }
   | { type: "open" }
   | { type: "close" };
 
 export type EventHandler<T extends SkavelEvent = SkavelEvent> = (event: T) => void;
+
+/** asked: they asked for a person. unhelpful: they marked an answer unhelpful. no_answer: Skavelo couldn't answer. */
+export type HandoffReason = "asked" | "unhelpful" | "no_answer";
+
+/** How the dashboard set handoff up. The team's email address never reaches the browser. */
+export interface HandoffConfig {
+  /** chat: a support chat on the page, falling back to email. email: the visitor leaves their email. code: only the handoff event fires. */
+  method: "chat" | "email" | "code";
+  /** Whether an email address is set, so email works as the fallback. */
+  email: boolean;
+}
 
 /** Widget settings saved in the dashboard, served by GET /sdk/v1/config. */
 export interface RemoteConfig {
@@ -185,6 +248,8 @@ export interface RemoteConfig {
   /** False when the visitor's country is excluded; the widget stays hidden. */
   available?: boolean;
   suggestions?: Suggestions;
+  /** Set when the agent can pass conversations to a person. */
+  handoff?: HandoffConfig;
 }
 
 export interface Targeting {

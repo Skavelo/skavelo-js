@@ -85,12 +85,21 @@ export class NetworkClient {
     return this.request<RemoteConfig>('GET', `${SDK_ROUTES}/config`, undefined, signal);
   }
 
+  /** Asks the server to open its AI connections now, so the coming question doesn't wait for them. */
+  warm(): void {
+    this.request('POST', `${SDK_ROUTES}/warm`).catch(() => {});
+  }
+
   async feedback(payload: FeedbackPayload): Promise<void> {
     await this.request('POST', `${SDK_ROUTES}/feedback`, payload);
   }
 
   async skillResult(payload: { messageId: string; outcome: 'approved' | 'rejected' | 'succeeded' | 'failed'; detail?: string }): Promise<void> {
     await this.request('POST', `${SDK_ROUTES}/skill-result`, payload);
+  }
+
+  async handoff(payload: { conversationId: string; reason: string; channel: string; email?: string; note?: string; pageUrl?: string }): Promise<void> {
+    await this.request('POST', `${SDK_ROUTES}/handoff`, payload);
   }
 
   async identify(conversationId: string, user: UserContext): Promise<void> {

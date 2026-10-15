@@ -6,11 +6,14 @@ import type {
   FeedbackRating,
   ShowPayload,
   AskResponse,
+  LookupResult,
   DoPayload,
   RemoteConfig,
+  HandoffReason,
 } from './types';
 import { DEFAULT_API_URL, NetworkClient, Refused, StreamUnavailable } from './core/network';
-import { runAction } from './core/actions';
+import { runAction, runLookup } from './core/actions';
+import { canClickFor, checkThen, fillField } from './core/fill';
 import { takePendingUser } from './core/pending-user';
 import { currentDevice, matchesTargeting, suggestionsFor, visitorBucket, watchUrl } from './core/targeting';
 import { SessionStore } from './core/session';
@@ -18,10 +21,22 @@ import { scanPage } from './core/dom-scanner';
 import { ShowMode } from './modes/show';
 import { ShadowHost } from './ui/shadow-host';
 import { HighlightOverlay } from './ui/highlight';
-import { Widget } from './ui/widget';
+import { Widget, type HandoffOffer } from './ui/widget';
+import { findChatTool, openChatTool } from './core/chat-tools';
 
 /** What visitors see when a limit or the allowed sites check stops an answer. */
-const UNAVAILABLE = "Help isn't available right now. Try again later.";
+const UNAVAILABLE = "Help isn't available right now. Please try again later.";
+
+/** "Can I talk to someone?" and the like, as opposed to a question Skavelo couldn't answer. */
+const ASKED_FOR_PERSON = /\b(human|person|someone|somebody|agent|support|representative|rep|real people|talk to|speak (to|with)|contact)\b/i;
+
+/** The first message a person on the team sees. */
+function handoffSummary(question: string | undefined, pageTitle: string): string {
+  const page = pageTitle.trim() ? ` on "${pageTitle.trim()}"` : '';
+  return question
+    ? `Hello, I was using the help assistant${page} and need help with: ${question}`
+    : `Hello, I need help with something${page}.`;
+}
 
 export class SkavelInstance {
   private cfg: SkaveloCfg;
@@ -36,6 +51,8 @@ export class SkavelInstance {
   private handlers: Map<string, Set<EventHandler>> = new Map();
   private mutationObserver: MutationObserver | null = null;
   private frame = 0;
+  /** The visitor's last question, for the message a person on the team sees first. */
+  private lastQuestion = '';
   private remote: RemoteConfig | null = null;
   private stopWatchingUrl: () => void;
   private bucket = visitorBucket();
@@ -53,14 +70,23 @@ export class SkavelInstance {
     const root = this.shadowHost.getRoot();
 
     this.highlight = new HighlightOverlay(root, cfg.theme?.accent);
+    this.highlight.setTheme({ accent: cfg.theme?.accent, highlight: cfg.theme?.highlight });
     this.widget = new Widget(root, cfg.theme, {
       onAsk: (q, suggestionId) => this.runAsk(q, suggestionId),
       onStop: () => this.inFlight?.abort(),
-      onOpen: () => this.emit({ type: 'open' }),
+      onOpen: () => {
+        this.warm();
+        this.emit({ type: 'open' });
+      },
+      onIntent: () => this.warm(),
       onClose: () => this.emit({ type: 'close' }),
       onStepNext: () => this.advanceStep(),
       onStepBack: () => this.backStep(),
-      onFeedback: (id, rating) => { this.feedback(id, rating).catch(() => {}); },
+      onFeedback: (id, rating) => {
+        this.feedback(id, rating).catch(() => {});
+        // An unhelpful answer is the moment to offer a person.
+        if (rating === -1) this.offerHandoff(id, 'unhelpful');
+      },
     });
 
     this.setupMutationObserver();
@@ -97,12 +123,10 @@ export class SkavelInstance {
 
   private applyRemote(remote: RemoteConfig) {
     this.remote = remote;
-    this.widget.applyTheme({
-      title: remote.name,
-      ...remote.appearance,
-      ...this.cfg.theme,
-      branding: remote.branding,
-    });
+    const theme = { ...remote.appearance, ...this.cfg.theme };
+    this.widget.applyTheme({ title: remote.name, ...theme, branding: remote.branding });
+    // The dashboard's accent and style reach the highlight too, not only what's set in code.
+    this.highlight.setTheme({ accent: theme.accent, highlight: theme.highlight ?? 'beacon' });
     this.applyTargeting();
     this.widget.setReady(true);
   }
@@ -133,6 +157,15 @@ export class SkavelInstance {
     // Signed in state and attributes can change who the widget is for.
     this.applyTargeting();
     return this;
+  }
+
+  private lastWarm = 0;
+
+  /** The server's connections close after a minute idle; reopen them once the visitor looks ready to ask. */
+  private warm() {
+    if (Date.now() - this.lastWarm < 40_000) return;
+    this.lastWarm = Date.now();
+    this.net.warm();
   }
 
   open(): this {
@@ -191,12 +224,18 @@ export class SkavelInstance {
 
   // ─── Asking ────────────────────────────────────────────────────────────────
 
-  private async runAsk(question: string, suggestionId?: string) {
+  /**
+   * Asks and shows the reply. When Skavelo first needs the visitor's own data, it runs that lookup
+   * here, in their browser, and asks again with the result (lookup set), keeping the same Stop.
+   */
+  private async runAsk(question: string, suggestionId?: string, lookup?: LookupResult, reuse?: AbortController) {
     // A new question replaces any walkthrough in progress.
     if (this.showMode) this.endWalkthrough();
 
-    const controller = new AbortController();
+    const controller = reuse ?? new AbortController();
     this.inFlight = controller;
+    this.lastQuestion = question;
+    if (lookup) this.widget.setLoading(true);
 
     const payload = {
       question,
@@ -207,6 +246,9 @@ export class SkavelInstance {
       // Who's asking, so even the first answer can fit their plan and role.
       ...(this.cfg.user?.id ? { user: this.cfg.user } : {}),
       ...(suggestionId ? { suggestionId } : {}),
+      // Lets Skavelo mention the "Talk to a person" button only where it can actually show.
+      ...(this.handoffRoute() ? { canHandoff: true } : {}),
+      ...(lookup ? { lookup } : {}),
     };
     const stream = this.widget.beginStream();
 
@@ -229,15 +271,25 @@ export class SkavelInstance {
         if (res.intro) stream.complete(res.intro, []);
         else stream.discard();
         this.startWalkthrough(res.show, { messageId: res.messageId });
+      } else if (res.mode === 'look' && res.look?.request && !lookup) {
+        stream.status(res.intro ?? `Checking ${res.look.skillName}.`);
+        this.widget.setLoading(true);
+        const result = await runLookup(res.look, this.cfg.actions, controller.signal);
+        this.emit({ type: 'lookup', skillId: res.look.skillId, ok: result.status >= 200 && result.status < 400 });
+        if (controller.signal.aborted) throw new DOMException('Stopped', 'AbortError');
+        await this.runAsk(question, suggestionId, { messageId: res.messageId, ...result }, controller);
+        return;
       } else if (res.mode === 'do' && res.do?.request) {
         stream.discard();
         this.proposeAction(res.do, res.messageId);
       } else if (res.answer) {
         this.emit({ type: 'answer', messageId: res.messageId });
         stream.complete(res.answer.text, res.answer.sources ?? [], res.messageId);
+        if (res.handoff) this.offerHandoff(res.messageId, ASKED_FOR_PERSON.test(question) ? 'asked' : 'no_answer');
       } else {
         stream.discard();
-        this.widget.addMessage("I don't have an answer for that yet.", 'assistant');
+        this.widget.addMessage("I don't have an answer to that question yet.", 'assistant');
+        this.offerHandoff(null, 'no_answer');
       }
     } catch (err) {
       this.widget.setLoading(false);
@@ -245,19 +297,102 @@ export class SkavelInstance {
         // Whatever was written before Stop stays readable.
         if (stream.text) stream.settle();
         else stream.discard();
-        this.widget.addMessage('Stopped.', 'assistant');
+        this.widget.addMessage('Response stopped.', 'assistant');
       } else if (err instanceof Refused) {
         stream.discard();
         this.widget.addMessage(UNAVAILABLE, 'assistant');
         console.warn(`[Skavelo] ${err.message}`);
       } else {
         stream.discard();
-        this.widget.addMessage("That didn't go through. Try asking again.", 'assistant');
+        this.widget.addMessage('Something went wrong. Please try asking again.', 'assistant');
         console.error('[Skavelo]', err);
       }
     } finally {
       if (this.inFlight === controller) this.inFlight = null;
     }
+  }
+
+  // ─── Handoff ───────────────────────────────────────────────────────────────
+
+  /**
+   * How a person can be reached from this page right now: the support chat on the page, email,
+   * or the site's own code. Null when handoff is off or nothing would work here.
+   */
+  private handoffRoute(): 'chat' | 'email' | 'code' | null {
+    const h = this.remote?.handoff;
+    if (!h) return null;
+    if (h.method === 'code') return 'code';
+    if (h.method === 'email') return h.email ? 'email' : null;
+    return findChatTool() ? 'chat' : h.email ? 'email' : null;
+  }
+
+  private offerHandoff(messageId: string | null, reason: HandoffReason) {
+    if (!this.handoffRoute()) return;
+    this.widget.offerHandoff(messageId, (offer) => this.startHandoff(reason, offer));
+  }
+
+  /**
+   * Runs from the click itself: copying to the clipboard and opening another chat both need a
+   * fresh user action, so nothing here waits before them.
+   */
+  private startHandoff(reason: HandoffReason, offer: HandoffOffer) {
+    const conversationId = this.session.getConversationId();
+    const route = this.handoffRoute();
+    if (!conversationId || !route) {
+      offer.done("The team isn't available from this page right now.");
+      return;
+    }
+    const pageUrl = window.location.href;
+    const question = this.lastQuestion || undefined;
+    const summary = handoffSummary(question, document.title);
+    const report = (channel: string, extra: { email?: string; note?: string } = {}) =>
+      this.net.handoff({ conversationId, reason, channel, pageUrl, ...extra });
+    const fire = (channel: string) =>
+      this.emit({ type: 'handoff', conversationId, reason, channel, summary, question, pageUrl });
+
+    if (route === 'chat') {
+      const tool = findChatTool();
+      if (tool) {
+        // Tools that can't take a message get it on the clipboard instead, ready to paste.
+        if (tool.delivers === 'none') navigator.clipboard?.writeText(summary).catch(() => {});
+        if (openChatTool(tool, summary)) {
+          const channel = `chat:${tool.id}`;
+          report(channel).catch(() => {});
+          fire(channel);
+          offer.done({
+            prefill: `${tool.name} is open with your question ready to send.`,
+            send: `Your question was sent to the team in ${tool.name}.`,
+            none: `${tool.name} is open. Your question has been copied so you can paste it there.`,
+          }[tool.delivers]);
+          this.widget.close();
+          return;
+        }
+      }
+      // The chat didn't open; email is next if the team set it up.
+      if (!this.remote?.handoff?.email) {
+        offer.done("The chat couldn't be opened. Please use the support link on this page instead.");
+        return;
+      }
+    }
+
+    if (route === 'code') {
+      report('code').catch(() => {});
+      fire('code');
+      offer.done('Your request has been passed to the team.');
+      return;
+    }
+
+    const known = typeof this.cfg.user?.email === 'string' ? this.cfg.user.email : undefined;
+    offer.askEmail(known, async (email, note) => {
+      try {
+        await report('email', { email, ...(note ? { note } : {}) });
+        fire('email');
+        return null;
+      } catch (err) {
+        if (err instanceof Refused && err.status === 429) return 'Too many requests. Please try again in a few minutes.';
+        return "Your message couldn't be sent. Please try again.";
+      }
+    });
   }
 
   // ─── Actions ───────────────────────────────────────────────────────────────
@@ -283,8 +418,19 @@ export class SkavelInstance {
 
   // ─── Walkthroughs ──────────────────────────────────────────────────────────
 
+  /** While a replay runs: the completion message it was started from. */
+  private replayOf: HTMLElement | null = null;
+
+  /** With fill: the step Skavelo is about to do for the visitor, so it's done once. */
+  private autoStep = -1;
+  private autoTimer = 0;
+  /** Set when the visitor steps back during a fill: from then on they're doing it themselves. */
+  private autoPaused = false;
+
   private startWalkthrough(payload: ShowPayload, opts: { messageId?: string; startAt?: number } = {}) {
     this.showMode = new ShowMode(payload, this.session, (e) => this.emit(e), opts);
+    this.autoStep = -1;
+    this.autoPaused = false;
     this.renderStep();
   }
 
@@ -301,13 +447,42 @@ export class SkavelInstance {
       this.unwatchTarget();
     }
 
+    const filling = !!this.showMode.payload.fill && !this.autoPaused;
+    const last = view.stepIndex === view.total - 1;
     this.widget.showStep({
       title: this.showMode.title,
-      instruction: view.instruction,
+      instruction: filling && last ? checkThen(view.instruction) : view.instruction,
       stepIndex: view.stepIndex,
       total: view.total,
       found: !!view.el,
     });
+    if (filling && view.el) this.doStepFor(view.el, view.stepIndex, last);
+  }
+
+  /**
+   * Does the current step for the visitor, after a moment so they can see what's happening:
+   * enters its value, or makes a click that only moves or opens something. Doing it fires the
+   * same change or click the visitor would, so the walkthrough moves on as usual. The last step,
+   * and anything that saves, sends or deletes, waits for the visitor.
+   */
+  private doStepFor(el: Element, stepIndex: number, last: boolean) {
+    if (this.autoStep === stepIndex || last) return;
+    const step = this.showMode?.currentStep();
+    if (!step) return;
+    const isField = el.matches('input, select, textarea');
+    if (isField ? step.value === undefined : !canClickFor(el)) return;
+    this.autoStep = stepIndex;
+    clearTimeout(this.autoTimer);
+    this.autoTimer = window.setTimeout(() => {
+      // Only if nothing moved on in the meantime.
+      if (!this.showMode || this.autoPaused || this.showMode.currentStep() !== step || !el.isConnected) return;
+      if (isField) {
+        // A field it can't fill (a custom dropdown, an option that isn't there) is left for the visitor.
+        fillField(el, step.value!);
+      } else {
+        (el as HTMLElement).click();
+      }
+    }, isField ? 450 : 650);
   }
 
   private advanceStep() {
@@ -322,21 +497,47 @@ export class SkavelInstance {
 
   private backStep() {
     if (!this.showMode) return;
+    clearTimeout(this.autoTimer);
+    this.autoPaused = true;
     this.showMode.back();
     this.renderStep();
   }
 
   private finishWalkthrough() {
+    const payload = this.showMode?.payload;
     const messageId = this.showMode?.messageId;
+    const replayOf = this.replayOf;
+    this.replayOf = null;
     // The completion message stays put; targeting is checked again on the next page change.
     this.showMode = null;
     this.unwatchTarget();
     this.highlight.hide();
     this.widget.clearStep();
-    this.widget.addCompletion("That's the last step. You're done.", messageId);
+    // A replay ends on the message it was started from rather than adding another one.
+    if (replayOf?.isConnected) {
+      this.widget.revisit(replayOf);
+      return;
+    }
+    const msg: HTMLElement = this.widget.addCompletion(
+      "That was the last step. You've completed the walkthrough.",
+      messageId,
+      // The steps are already here, so going through them again needs no question and no answer.
+      payload ? () => this.replayWalkthrough(payload, msg) : undefined,
+    );
+  }
+
+  private replayWalkthrough(payload: ShowPayload, from: HTMLElement) {
+    // Another walkthrough may be running by now; this one takes its place.
+    if (this.showMode) this.endWalkthrough();
+    this.emit({ type: 'walkthrough_replay', workflowId: payload.workflowId });
+    this.replayOf = from;
+    // No message id: the walkthrough was rated the first time, so the replay doesn't ask again.
+    this.startWalkthrough(payload);
   }
 
   private endWalkthrough() {
+    clearTimeout(this.autoTimer);
+    this.replayOf = null;
     this.showMode?.abandon();
     this.showMode = null;
     this.applyTargeting();

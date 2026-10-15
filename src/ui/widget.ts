@@ -13,6 +13,8 @@ const WIDGET_CSS = `
     --sk-text-2: #52525B;
     --sk-text-3: #A1A1AA;
     --sk-shadow: 0 1px 2px rgba(24,24,27,.06), 0 12px 32px rgba(24,24,27,.12);
+    /* The button and floating suggestions sit straight on the page, so they need a firmer lift than the panel. */
+    --sk-float: 0 0 0 1px rgba(24,24,27,.03), 0 2px 6px rgba(24,24,27,.10), 0 14px 32px -6px rgba(24,24,27,.26);
     position: fixed;
     z-index: 2147483645;
     display: flex;
@@ -50,7 +52,7 @@ const WIDGET_CSS = `
     background: color-mix(in srgb, var(--sk-surface) 92%, transparent);
     backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
-    box-shadow: var(--sk-shadow);
+    box-shadow: var(--sk-float);
     font-size: 15px;
     font-weight: 500;
     color: var(--sk-text-2);
@@ -102,7 +104,7 @@ const WIDGET_CSS = `
   .sk-pos-right .sk-suggest--float { align-items: flex-end; }
   .sk-pos-left .sk-suggest--float { align-items: flex-start; }
   .sk-pos-center .sk-suggest--float { align-items: center; }
-  .sk-suggest--float .sk-chip { box-shadow: var(--sk-shadow); animation: sk-in 260ms cubic-bezier(.2,.8,.2,1) both; }
+  .sk-suggest--float .sk-chip { box-shadow: var(--sk-float); animation: sk-in 260ms cubic-bezier(.2,.8,.2,1) both; }
   .sk-suggest--float .sk-chip:nth-child(2) { animation-delay: 60ms; }
   .sk-suggest--float .sk-chip:nth-child(3) { animation-delay: 120ms; }
   @media (max-width: 480px) { .sk-suggest--float .sk-chip:nth-child(n+3) { display: none; } }
@@ -119,7 +121,7 @@ const WIDGET_CSS = `
     border: 1px solid var(--sk-line);
     background: var(--sk-surface);
     color: var(--sk-text-2);
-    box-shadow: 0 1px 2px rgba(24,24,27,.06);
+    box-shadow: var(--sk-float);
     animation: sk-in 260ms cubic-bezier(.2,.8,.2,1) both;
   }
   .sk-suggest-x:hover { color: var(--sk-text); }
@@ -228,6 +230,7 @@ const WIDGET_CSS = `
     color: var(--sk-text-2);
   }
   .sk-msg--assistant { align-self: stretch; color: var(--sk-text); }
+  .sk-msg--status { color: var(--sk-text-2); font-size: 0.92em; }
   .sk-streaming > p:last-child::after {
     content: '';
     display: inline-block;
@@ -265,6 +268,13 @@ const WIDGET_CSS = `
   .sk-voted { opacity: 1 !important; }
   .sk-rate { display: flex; align-items: center; gap: 6px; margin-top: 8px; font-size: 13px; color: var(--sk-text-3); }
   .sk-rate .sk-vote { margin-top: 0; }
+  .sk-replay {
+    display: inline-flex; align-items: center; gap: 6px; margin-top: 10px;
+    font-size: 13.5px; font-weight: 500; color: var(--sk-text);
+    text-decoration: underline; text-decoration-color: var(--sk-line); text-underline-offset: 3px;
+  }
+  .sk-replay:hover { text-decoration-color: currentColor; }
+  .sk-replay svg { width: 14px; height: 14px; color: var(--sk-text-3); }
 
   /* An action the visitor approves before it runs. */
   .sk-action { margin-top: 10px; padding: 12px 14px; border: 1px solid var(--sk-line); border-radius: 12px; background: var(--sk-subtle); }
@@ -281,6 +291,22 @@ const WIDGET_CSS = `
   .sk-action-cancel:hover:not(:disabled) { background: var(--sk-line); color: var(--sk-text); }
   .sk-action-status { margin-top: 10px; font-size: 13.5px; color: var(--sk-text-2); }
   .sk-action-status--ok { color: var(--sk-text); }
+
+  /* Handoff: a button under an answer, then the email form or a status line in its place. */
+  .sk-handoff { margin-top: 10px; }
+  .sk-handoff-btn { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border: 1px solid var(--sk-line); border-radius: 999px; font-size: 13.5px; font-weight: 500; color: var(--sk-text); }
+  .sk-handoff-btn:hover:not(:disabled) { background: var(--sk-subtle); }
+  .sk-handoff-btn:disabled { opacity: .6; cursor: default; }
+  .sk-handoff-form { display: grid; gap: 8px; padding: 12px 14px; border: 1px solid var(--sk-line); border-radius: 12px; background: var(--sk-subtle); }
+  .sk-handoff-form label { font-size: 13px; font-weight: 500; color: var(--sk-text-2); }
+  .sk-handoff-form input, .sk-handoff-form textarea {
+    width: 100%; padding: 8px 10px; border: 1px solid var(--sk-line); border-radius: 8px;
+    background: var(--sk-surface); color: var(--sk-text); font: inherit; font-size: 14px; resize: vertical;
+  }
+  .sk-handoff-form input:focus-visible, .sk-handoff-form textarea:focus-visible { outline: 2px solid var(--sk-accent); outline-offset: 1px; }
+  .sk-handoff-form .sk-action-buttons { margin-top: 4px; }
+  .sk-handoff-error { font-size: 13px; color: #B42318; }
+  .sk-handoff-status { font-size: 13.5px; color: var(--sk-text-2); }
 
   .sk-icon { flex-shrink: 0; object-fit: contain; border-radius: 4px; }
   .sk-icon-pulse { animation: sk-icon-pulse 1.4s ease-in-out infinite; }
@@ -375,6 +401,7 @@ const WIDGET_CSS = `
     --sk-text-2: #C4C4CC;
     --sk-text-3: #85858F;
     --sk-shadow: 0 1px 2px rgba(0,0,0,.4), 0 12px 32px rgba(0,0,0,.45);
+      --sk-float: 0 2px 6px rgba(0,0,0,.5), 0 14px 32px -6px rgba(0,0,0,.65);
   }
   @media (prefers-color-scheme: dark) {
     .sk-dock:not(.sk-light) {
@@ -385,6 +412,7 @@ const WIDGET_CSS = `
       --sk-text-2: #C4C4CC;
       --sk-text-3: #85858F;
       --sk-shadow: 0 1px 2px rgba(0,0,0,.4), 0 12px 32px rgba(0,0,0,.45);
+      --sk-float: 0 2px 6px rgba(0,0,0,.5), 0 14px 32px -6px rgba(0,0,0,.65);
     }
   }
 
@@ -399,6 +427,7 @@ const WIDGET_CSS = `
 `;
 
 const ICONS = {
+  replay: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>',
   close: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>',
   closeSmall: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>',
   expand: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>',
@@ -407,6 +436,7 @@ const ICONS = {
   stop: '<svg width="12" height="12" viewBox="0 0 12 12"><rect width="12" height="12" rx="2" fill="currentColor"/></svg>',
   thumbUp: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M7 10v11H4a1 1 0 0 1-1-1v-9a1 1 0 0 1 1-1h3Zm0 0 4-8a3 3 0 0 1 3 3v4h5.5a2 2 0 0 1 2 2.3l-1.4 8A2 2 0 0 1 18.1 21H7"/></svg>',
   thumbDown: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M17 14V3h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1h-3Zm0 0-4 8a3 3 0 0 1-3-3v-4H4.5a2 2 0 0 1-2-2.3l1.4-8A2 2 0 0 1 5.9 3H17"/></svg>',
+  person: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>',
   arrowLeft: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M11 18l-6-6 6-6"/></svg>',
   arrowRight: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>',
 };
@@ -469,6 +499,8 @@ export interface WidgetEvents {
   onStepNext: () => void;
   onStepBack: () => void;
   onFeedback: (messageId: string, rating: FeedbackRating) => void;
+  /** The visitor is about to ask: pointing at the widget, focusing it or typing. */
+  onIntent?: () => void;
 }
 
 export interface StepDisplay {
@@ -483,6 +515,16 @@ export type View = 'pill' | 'composer' | 'panel';
 
 /** Theme plus the plan-controlled branding flag, which customers can't set from code. */
 export type AppliedTheme = ThemeCfg & { branding?: boolean };
+
+/** What the "Talk to a person" click can do next. */
+export interface HandoffOffer {
+  /** Replace the button with a status line. */
+  done(text: string): void;
+  /** Put the button back. */
+  cancel(): void;
+  /** Ask for the visitor's email; send returns an error to show, or null once it went through. */
+  askEmail(defaultEmail: string | undefined, send: (email: string, note: string) => Promise<string | null>): void;
+}
 
 export class Widget {
   private events: WidgetEvents;
@@ -512,6 +554,7 @@ export class Widget {
   private theme: AppliedTheme = {};
   private scheme: 'light' | 'dark' | null = null;
   private preview: boolean;
+  private answerEls = new Map<string, HTMLElement>();
 
   constructor(
     shadowRoot: ShadowRoot,
@@ -551,7 +594,7 @@ export class Widget {
           <div class="sk-messages" aria-live="polite"></div>
           <div class="sk-step" hidden>
             <div class="sk-step-text"></div>
-            <div class="sk-step-note" hidden>I can't find this on the page right now. It may be on another screen.</div>
+            <div class="sk-step-note" hidden>This item isn't visible on the current page. It may be on another screen.</div>
             <div class="sk-step-nav">
               <span class="sk-stepmark" aria-hidden="true"></span>
               <span class="sk-count"></span>
@@ -614,6 +657,10 @@ export class Widget {
     });
     $('.sk-back').addEventListener('click', () => this.events.onStepBack());
     $('.sk-next').addEventListener('click', () => this.events.onStepNext());
+    // Pointing at a suggestion, focusing the input or typing usually comes seconds before a question.
+    for (const type of ['pointerenter', 'focusin', 'input'] as const) {
+      this.dock.addEventListener(type, () => this.events.onIntent?.(), { passive: true });
+    }
     this.dock.addEventListener('keydown', (e) => {
       if (e.key === 'Escape' && this.view !== 'pill') this.close();
     });
@@ -771,6 +818,13 @@ export class Widget {
       },
       /** Keep what arrived so far as a plain message. */
       settle: () => { msg?.classList.remove('sk-streaming'); },
+      /** A quiet line saying what's being checked, like "Checking your invoices." */
+      status: (line: string) => {
+        const m = el();
+        m.classList.remove('sk-streaming');
+        m.classList.add('sk-msg--status');
+        m.innerHTML = renderText(line || text);
+      },
       discard: () => { msg?.remove(); msg = null; },
     };
   }
@@ -796,13 +850,14 @@ export class Widget {
     if (messageId) {
       msg.appendChild(this.buildVote(messageId));
       this.markLatest(msg);
+      this.answerEls.set(messageId, msg);
     }
     this.scrollToEnd();
   }
 
   /**
    * An action Skavelo proposes, shown with exactly what it will send. Nothing runs until the
-   * visitor clicks Run it; the outcome replaces the buttons.
+   * visitor clicks Run action; the outcome replaces the buttons.
    */
   addActionCard(action: { summary: string; skillName: string; inputs: Record<string, unknown> }, run: () => Promise<{ ok: boolean; message: string }>, cancel: () => void) {
     const msg = this.addMessage(action.summary, 'assistant');
@@ -815,7 +870,7 @@ export class Widget {
       <div class="sk-action-name">${escapeHtml(action.skillName)}</div>
       ${rows ? `<dl class="sk-action-inputs">${rows}</dl>` : ''}
       <div class="sk-action-buttons">
-        <button type="button" class="sk-action-run">Run it</button>
+        <button type="button" class="sk-action-run">Run action</button>
         <button type="button" class="sk-action-cancel">Cancel</button>
       </div>`;
     msg.appendChild(card);
@@ -839,24 +894,128 @@ export class Widget {
     });
     cancelBtn.addEventListener('click', () => {
       cancel();
-      finish('Cancelled. Nothing was changed.', false);
+      finish('Cancelled. No changes were made.', false);
     });
     this.markLatest(msg);
     this.scrollToEnd();
     if (!this.preview) runBtn.focus({ preventScroll: true });
   }
 
-  /** Closing message for a walkthrough, with one rating for the whole thing. */
-  addCompletion(text: string, messageId?: string) {
+  /**
+   * "Talk to a person" under an answer, or under the last message when there's no id. Only one
+   * offer shows at a time. The click hands the caller an offer to finish: a status line, or the
+   * email form when the team is reached by email.
+   */
+  offerHandoff(messageId: string | null, onClick: (offer: HandoffOffer) => void) {
+    const msg = messageId ? this.answerEls.get(messageId) : (this.messagesEl.lastElementChild as HTMLElement | null);
+    if (!msg || msg.querySelector('.sk-handoff')) return;
+    this.messagesEl.querySelectorAll('.sk-handoff:not(.sk-handoff--done)').forEach((el) => el.remove());
+
+    const box = document.createElement('div');
+    box.className = 'sk-handoff';
+    const showButton = () => {
+      box.innerHTML = `<button type="button" class="sk-handoff-btn">${ICONS.person}<span>Talk to a person</span></button>`;
+      const btn = box.querySelector('button') as HTMLButtonElement;
+      btn.addEventListener('click', () => {
+        btn.disabled = true;
+        onClick(offer);
+      });
+    };
+    const done = (text: string) => {
+      box.classList.add('sk-handoff--done');
+      box.innerHTML = '';
+      const status = document.createElement('div');
+      status.className = 'sk-handoff-status';
+      status.setAttribute('role', 'status');
+      status.textContent = text;
+      box.appendChild(status);
+      this.scrollToEnd();
+    };
+    const offer: HandoffOffer = {
+      done,
+      cancel: showButton,
+      askEmail: (defaultEmail, send) => {
+        const id = `sk-handoff-${Math.random().toString(36).slice(2, 8)}`;
+        box.innerHTML = `
+          <form class="sk-handoff-form" novalidate>
+            <label for="${id}">Your email address</label>
+            <input id="${id}" type="email" autocomplete="email" placeholder="you@company.com" maxlength="254" />
+            <textarea rows="2" maxlength="1000" placeholder="Additional details (optional)" aria-label="Additional details"></textarea>
+            <div class="sk-handoff-error" role="alert" hidden></div>
+            <div class="sk-action-buttons">
+              <button type="submit" class="sk-action-run">Send to the team</button>
+              <button type="button" class="sk-action-cancel">Cancel</button>
+            </div>
+          </form>`;
+        const form = box.querySelector('form') as HTMLFormElement;
+        const email = form.querySelector('input') as HTMLInputElement;
+        const note = form.querySelector('textarea') as HTMLTextAreaElement;
+        const error = form.querySelector('.sk-handoff-error') as HTMLElement;
+        const submit = form.querySelector('.sk-action-run') as HTMLButtonElement;
+        email.value = defaultEmail ?? '';
+        const fail = (text: string) => {
+          error.textContent = text;
+          error.hidden = false;
+        };
+        form.querySelector('.sk-action-cancel')!.addEventListener('click', showButton);
+        form.addEventListener('submit', async (e) => {
+          e.preventDefault();
+          const address = email.value.trim();
+          if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(address)) return fail('Please enter a valid email address so the team can reply.');
+          error.hidden = true;
+          submit.disabled = true;
+          submit.textContent = 'Sending…';
+          const problem = await send(address, note.value.trim());
+          if (problem) {
+            submit.disabled = false;
+            submit.textContent = 'Send to the team';
+            return fail(problem);
+          }
+          done(`Your message has been sent. The team will reply to ${address}.`);
+        });
+        this.scrollToEnd();
+        if (!this.preview) email.focus({ preventScroll: true });
+      },
+    };
+
+    showButton();
+    msg.appendChild(box);
+    this.scrollToEnd();
+  }
+
+  /**
+   * Closing message for a walkthrough, with one rating for the whole thing and a link to go
+   * through it again from the first step.
+   */
+  addCompletion(text: string, messageId?: string, onReplay?: () => void): HTMLElement {
     const msg = this.addMessage(text, 'assistant');
-    if (!messageId) return;
+    if (onReplay) {
+      const replay = document.createElement('button');
+      replay.type = 'button';
+      replay.className = 'sk-replay';
+      replay.innerHTML = `${ICONS.replay}<span>Show me again</span>`;
+      replay.addEventListener('click', onReplay);
+      msg.appendChild(replay);
+    }
+    if (!messageId) {
+      this.markLatest(msg);
+      this.scrollToEnd();
+      return msg;
+    }
     const row = document.createElement('div');
     row.className = 'sk-rate';
-    row.innerHTML = '<span>Did that help?</span>';
+    row.innerHTML = '<span>Was this helpful?</span>';
     row.appendChild(this.buildVote(messageId));
     msg.appendChild(row);
     this.markLatest(msg);
     this.scrollToEnd();
+    return msg;
+  }
+
+  /** Brings an earlier message back into view, e.g. the completion a replay was started from. */
+  revisit(msg: HTMLElement) {
+    this.markLatest(msg);
+    msg.scrollIntoView({ block: 'nearest' });
   }
 
   private markLatest(msg: HTMLElement) {
