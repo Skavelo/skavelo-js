@@ -14,6 +14,7 @@ import type {
 import { DEFAULT_API_URL, NetworkClient, Refused, StreamUnavailable } from './core/network';
 import { runAction, runLookup } from './core/actions';
 import { canClickFor, checkThen, fillField } from './core/fill';
+import { StuckWatcher, helpFor, type StuckSignal } from './core/stuck';
 import { takePendingUser } from './core/pending-user';
 import { currentDevice, matchesTargeting, suggestionsFor, visitorBucket, watchUrl } from './core/targeting';
 import { SessionStore } from './core/session';
@@ -121,8 +122,45 @@ export class SkavelInstance {
       .finally(() => clearTimeout(giveUp));
   }
 
+  private stuck: StuckWatcher | null = null;
+  private lastNudge = 0;
+
+  /** Watches for a visitor who seems stuck, unless the agent has it switched off. */
+  private watchForStuck() {
+    if (this.remote?.stuckHelp === false || this.stuck || typeof MutationObserver === 'undefined') return;
+    this.stuck = new StuckWatcher((signal) => this.offerHelp(signal));
+    this.stuck.start();
+  }
+
+  /**
+   * Offers help for a stuck visitor: at most once every two minutes, three times a visit, and
+   * never twice for the same thing, nor while a walkthrough or answer is under way.
+   */
+  private offerHelp(signal: StuckSignal) {
+    if (this.showMode || this.inFlight || Date.now() - this.lastNudge < 120_000) return;
+    const { chip, question } = helpFor(signal);
+    const key = `${signal.kind}:${'label' in signal ? signal.label : signal.text}`;
+    let seen: string[] = [];
+    try { seen = JSON.parse(sessionStorage.getItem('_sk_stuck') ?? '[]'); } catch {}
+    if (seen.length >= 3 || seen.includes(key)) return;
+    const shown = this.widget.nudge(
+      chip,
+      () => {
+        this.emit({ type: 'stuck', kind: signal.kind, question, accepted: true });
+        this.widget.showQuestion(question);
+        void this.runAsk(question);
+      },
+      () => this.emit({ type: 'stuck', kind: signal.kind, question, accepted: false }),
+    );
+    if (!shown) return;
+    this.lastNudge = Date.now();
+    try { sessionStorage.setItem('_sk_stuck', JSON.stringify([...seen, key])); } catch {}
+    this.emit({ type: 'stuck', kind: signal.kind, question });
+  }
+
   private applyRemote(remote: RemoteConfig) {
     this.remote = remote;
+    this.watchForStuck();
     const theme = { ...remote.appearance, ...this.cfg.theme };
     this.widget.applyTheme({ title: remote.name, ...theme, branding: remote.branding });
     // The dashboard's accent and style reach the highlight too, not only what's set in code.
@@ -210,6 +248,7 @@ export class SkavelInstance {
   }
 
   destroy(): void {
+    this.stuck?.stop();
     this.stopWatchingUrl();
     this.unwatchTarget();
     cancelAnimationFrame(this.frame);
@@ -506,6 +545,8 @@ export class SkavelInstance {
   private finishWalkthrough() {
     const payload = this.showMode?.payload;
     const messageId = this.showMode?.messageId;
+    // Replays have no message id, so only the first run is counted.
+    if (messageId) this.net.walkthroughResult({ messageId, outcome: 'completed' }).catch(() => {});
     const replayOf = this.replayOf;
     this.replayOf = null;
     // The completion message stays put; targeting is checked again on the next page change.
@@ -538,6 +579,9 @@ export class SkavelInstance {
   private endWalkthrough() {
     clearTimeout(this.autoTimer);
     this.replayOf = null;
+    const messageId = this.showMode?.messageId;
+    const atStep = this.showMode?.stepIndexNow;
+    if (messageId) this.net.walkthroughResult({ messageId, outcome: 'abandoned', atStep }).catch(() => {});
     this.showMode?.abandon();
     this.showMode = null;
     this.applyTargeting();

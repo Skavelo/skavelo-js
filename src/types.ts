@@ -209,6 +209,8 @@ export type SkavelEvent =
   | { type: "do_rejected"; skillId: string }
   /** Skavelo read the visitor's data with a lookup; ok is false when the app refused or failed. */
   | { type: "lookup"; skillId: string; ok: boolean }
+  /** Skavelo offered help because the visitor seemed stuck; accepted is set once they choose. */
+  | { type: "stuck"; kind: "disabled" | "error" | "repeat"; question: string; accepted?: boolean }
   | {
       type: "handoff";
       conversationId: string;
@@ -250,6 +252,8 @@ export interface RemoteConfig {
   suggestions?: Suggestions;
   /** Set when the agent can pass conversations to a person. */
   handoff?: HandoffConfig;
+  /** Offer help when the visitor seems stuck. Missing means on. */
+  stuckHelp?: boolean;
 }
 
 export interface Targeting {

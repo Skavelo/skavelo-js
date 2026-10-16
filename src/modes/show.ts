@@ -38,6 +38,11 @@ export class ShowMode {
     this.persist();
   }
 
+  /** The step the visitor is on, counting from 0. */
+  get stepIndexNow(): number {
+    return this.stepIndex;
+  }
+
   get title(): string {
     return this.payload.name ?? 'Walkthrough';
   }

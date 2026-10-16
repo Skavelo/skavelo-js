@@ -98,6 +98,10 @@ export class NetworkClient {
     await this.request('POST', `${SDK_ROUTES}/skill-result`, payload);
   }
 
+  async walkthroughResult(payload: { messageId: string; outcome: 'completed' | 'abandoned'; atStep?: number }): Promise<void> {
+    await this.request('POST', `${SDK_ROUTES}/walkthrough-result`, payload);
+  }
+
   async handoff(payload: { conversationId: string; reason: string; channel: string; email?: string; note?: string; pageUrl?: string }): Promise<void> {
     await this.request('POST', `${SDK_ROUTES}/handoff`, payload);
   }

@@ -686,6 +686,8 @@ export class Widget {
     this.pill.hidden = view !== 'pill';
     this.composer.hidden = view !== 'composer';
     this.panel.hidden = view !== 'panel';
+    // Opening the widget answers a nudge either way.
+    if (view !== 'pill') { this.nudgeItem = null; clearTimeout(this.nudgeTimer); }
     this.renderSuggestions();
     // A preview inside the dashboard must never pull focus away from the settings form.
     if (this.preview) return;
@@ -716,7 +718,62 @@ export class Widget {
     this.renderSuggestions();
   }
 
+  private nudgeItem: { chip: string; onAccept: () => void; onDismiss: () => void } | null = null;
+  private nudgeTimer = 0;
+
+  /**
+   * Offers help over the launcher when the visitor seems stuck: one chip with the question, which
+   * goes away by itself after a while. Only while the widget is closed.
+   */
+  nudge(chip: string, onAccept: () => void, onDismiss: () => void): boolean {
+    if (this.view !== 'pill' || this.loading) return false;
+    this.nudgeItem = { chip, onAccept, onDismiss };
+    clearTimeout(this.nudgeTimer);
+    this.nudgeTimer = window.setTimeout(() => this.clearNudge(), 25_000);
+    this.renderSuggestions();
+    return true;
+  }
+
+  private clearNudge() {
+    clearTimeout(this.nudgeTimer);
+    if (!this.nudgeItem) return;
+    this.nudgeItem = null;
+    this.renderSuggestions();
+  }
+
+  private renderNudge(): boolean {
+    const n = this.nudgeItem;
+    if (!n || this.view !== 'pill') return false;
+    this.suggestEl.hidden = false;
+    this.suggestEl.classList.add('sk-suggest--float');
+    const chip = document.createElement('button');
+    chip.type = 'button';
+    chip.className = 'sk-chip';
+    chip.setAttribute('role', 'listitem');
+    chip.textContent = n.chip;
+    chip.addEventListener('click', () => {
+      this.nudgeItem = null;
+      clearTimeout(this.nudgeTimer);
+      n.onAccept();
+    });
+    const x = document.createElement('button');
+    x.type = 'button';
+    x.className = 'sk-suggest-x';
+    x.setAttribute('aria-label', 'No thanks');
+    x.innerHTML = ICONS.closeSmall;
+    x.addEventListener('click', () => {
+      n.onDismiss();
+      this.clearNudge();
+    });
+    const row = document.createElement('div');
+    row.className = 'sk-suggest-row';
+    row.append(chip, x);
+    this.suggestEl.replaceChildren(row);
+    return true;
+  }
+
   private renderSuggestions() {
+    if (this.renderNudge()) return;
     try { this.floatDismissed ||= sessionStorage.getItem('_sk_suggest_off') === '1'; } catch {}
     const float = this.view === 'pill' && this.floatReady && !this.floatDismissed;
     const show = !this.hasConversation && this.suggestions.length > 0 && (this.view === 'composer' || float);
