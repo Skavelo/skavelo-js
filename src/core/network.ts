@@ -10,10 +10,17 @@ export class NetworkClient {
   private apiUrl: string;
   private agentId: string;
   private conversationId: string | null = null;
+  private previewPass?: string;
 
-  constructor(apiUrl: string, agentId: string) {
+  constructor(apiUrl: string, agentId: string, previewPass?: string) {
     this.apiUrl = apiUrl.replace(/\/$/, '');
     this.agentId = agentId;
+    this.previewPass = previewPass;
+  }
+
+  /** Who's asking: the agent, plus the preview pass when the dashboard's bookmark started the widget. */
+  private headers(): Record<string, string> {
+    return { 'X-Agent-Id': this.agentId, ...(this.previewPass ? { 'X-Skavelo-Preview': this.previewPass } : {}) };
   }
 
   setConversationId(id: string) {
@@ -40,7 +47,7 @@ export class NetworkClient {
       method: 'POST',
       signal,
       credentials: 'omit',
-      headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream', 'X-Agent-Id': this.agentId },
+      headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream', ...this.headers() },
       body: JSON.stringify(payload),
     }).catch((err) => {
       if (signal?.aborted) throw err;
@@ -117,7 +124,7 @@ export class NetworkClient {
       signal,
       headers: {
         'Content-Type': 'application/json',
-        'X-Agent-Id': this.agentId,
+        ...this.headers(),
       },
       credentials: 'omit',
       body: body ? JSON.stringify(body) : undefined,

@@ -12,9 +12,9 @@ const WIDGET_CSS = `
     --sk-text: #18181B;
     --sk-text-2: #52525B;
     --sk-text-3: #A1A1AA;
-    --sk-shadow: 0 1px 2px rgba(24,24,27,.06), 0 12px 32px rgba(24,24,27,.12);
+    --sk-shadow: 0 1px 2px rgba(24,24,27,.06), 0 12px 32px rgba(24,24,27,.14), 0 32px 64px -12px rgba(24,24,27,.20);
     /* The button and floating suggestions sit straight on the page, so they need a firmer lift than the panel. */
-    --sk-float: 0 0 0 1px rgba(24,24,27,.03), 0 2px 6px rgba(24,24,27,.10), 0 14px 32px -6px rgba(24,24,27,.26);
+    --sk-float: 0 0 0 1px rgba(24,24,27,.04), 0 2px 6px rgba(24,24,27,.08), 0 0 40px rgba(24,24,27,.12), 0 24px 56px -10px rgba(24,24,27,.24);
     position: fixed;
     z-index: 2147483645;
     display: flex;
@@ -35,6 +35,9 @@ const WIDGET_CSS = `
   button:focus-visible, input:focus-visible { outline: 2px solid var(--sk-accent); outline-offset: 2px; }
 
   .sk-mark { flex-shrink: 0; color: var(--sk-text); }
+  /* Flex, so the logo centres on the text instead of sitting on its baseline. */
+  .sk-brand { display: flex; align-items: center; flex-shrink: 0; }
+  .sk-brand svg { display: block; }
   .sk-mark .sk-dot { fill: var(--sk-accent); }
 
   @keyframes sk-in { from { opacity: 0; transform: translateY(6px) scale(.98); } to { opacity: 1; transform: none; } }
@@ -46,7 +49,8 @@ const WIDGET_CSS = `
     display: inline-flex;
     align-items: center;
     gap: 10px;
-    padding: 11px 18px 11px 14px;
+    height: 52px;
+    padding: 0 18px 0 14px;
     border-radius: 14px;
     border: 1px solid var(--sk-line);
     background: color-mix(in srgb, var(--sk-surface) 92%, transparent);
@@ -81,9 +85,10 @@ const WIDGET_CSS = `
     position: relative;
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 6px;
     width: min(540px, calc(100vw - 32px));
-    padding: 14px 14px 14px 18px;
+    height: 52px;
+    padding: 0 14px 0 18px;
     border-radius: 16px;
     border: 1px solid var(--sk-line);
     background: color-mix(in srgb, var(--sk-surface) 94%, transparent);
@@ -104,7 +109,7 @@ const WIDGET_CSS = `
   .sk-pos-right .sk-suggest--float { align-items: flex-end; }
   .sk-pos-left .sk-suggest--float { align-items: flex-start; }
   .sk-pos-center .sk-suggest--float { align-items: center; }
-  .sk-suggest--float .sk-chip { box-shadow: var(--sk-float); animation: sk-in 260ms cubic-bezier(.2,.8,.2,1) both; }
+  .sk-suggest--float .sk-chip { animation: sk-in 260ms cubic-bezier(.2,.8,.2,1) both; }
   .sk-suggest--float .sk-chip:nth-child(2) { animation-delay: 60ms; }
   .sk-suggest--float .sk-chip:nth-child(3) { animation-delay: 120ms; }
   @media (max-width: 480px) { .sk-suggest--float .sk-chip:nth-child(n+3) { display: none; } }
@@ -134,7 +139,7 @@ const WIDGET_CSS = `
     font-size: 14px;
     line-height: 1.3;
     text-align: left;
-    box-shadow: 0 1px 2px rgba(24,24,27,.06);
+    box-shadow: var(--sk-float);
     transition: border-color 120ms ease, background 120ms ease;
   }
   .sk-chip:hover { border-color: color-mix(in srgb, var(--sk-accent) 45%, var(--sk-line)); background: var(--sk-subtle); }
@@ -163,7 +168,7 @@ const WIDGET_CSS = `
     font-size: 15px;
     color: var(--sk-text);
   }
-  input.sk-field::placeholder { color: var(--sk-text-3); }
+  input.sk-field::placeholder { color: color-mix(in srgb, var(--sk-text-3) 55%, var(--sk-text-2)); }
   input.sk-field:focus-visible { outline: none; }
 
   .sk-icon-btn {
@@ -400,8 +405,8 @@ const WIDGET_CSS = `
     --sk-text: #F4F4F5;
     --sk-text-2: #C4C4CC;
     --sk-text-3: #85858F;
-    --sk-shadow: 0 1px 2px rgba(0,0,0,.4), 0 12px 32px rgba(0,0,0,.45);
-      --sk-float: 0 2px 6px rgba(0,0,0,.5), 0 14px 32px -6px rgba(0,0,0,.65);
+    --sk-shadow: 0 1px 2px rgba(0,0,0,.4), 0 12px 32px rgba(0,0,0,.45), 0 32px 64px -12px rgba(0,0,0,.55);
+      --sk-float: 0 2px 6px rgba(0,0,0,.45), 0 0 40px rgba(0,0,0,.5), 0 24px 56px -10px rgba(0,0,0,.65);
   }
   @media (prefers-color-scheme: dark) {
     .sk-dock:not(.sk-light) {
@@ -411,8 +416,8 @@ const WIDGET_CSS = `
       --sk-text: #F4F4F5;
       --sk-text-2: #C4C4CC;
       --sk-text-3: #85858F;
-      --sk-shadow: 0 1px 2px rgba(0,0,0,.4), 0 12px 32px rgba(0,0,0,.45);
-      --sk-float: 0 2px 6px rgba(0,0,0,.5), 0 14px 32px -6px rgba(0,0,0,.65);
+      --sk-shadow: 0 1px 2px rgba(0,0,0,.4), 0 12px 32px rgba(0,0,0,.45), 0 32px 64px -12px rgba(0,0,0,.55);
+      --sk-float: 0 2px 6px rgba(0,0,0,.45), 0 0 40px rgba(0,0,0,.5), 0 24px 56px -10px rgba(0,0,0,.65);
     }
   }
 

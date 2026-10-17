@@ -19,6 +19,17 @@ export interface SkaveloCfg {
   theme?: ThemeCfg;
   /** How approved actions (skills) call your app. */
   actions?: ActionsCfg;
+  /**
+   * Shows the real reason when a question is refused (a monthly limit, say) instead of "Help isn't
+   * available right now". For your own team's testing, like Skavelo's dashboard preview; leave it
+   * off where your users see the widget.
+   */
+  showLimitReasons?: boolean;
+  /**
+   * A preview pass from Skavelo's dashboard, set by the "Preview on your app" bookmark. It lets a
+   * signed-in team member try the agent on any page, and their questions don't use the plan.
+   */
+  previewPass?: string;
 }
 
 export interface ActionsCfg {

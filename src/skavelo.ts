@@ -64,7 +64,7 @@ export class SkavelInstance {
     const user = cfg.user?.id ? cfg.user : takePendingUser() ?? undefined;
     this.cfg = { ...cfg, user };
 
-    this.net = new NetworkClient(cfg.apiUrl ?? DEFAULT_API_URL, cfg.agentId);
+    this.net = new NetworkClient(cfg.apiUrl ?? DEFAULT_API_URL, cfg.agentId, cfg.previewPass);
     this.session = new SessionStore(cfg.agentId);
 
     this.shadowHost = new ShadowHost();
@@ -339,7 +339,7 @@ export class SkavelInstance {
         this.widget.addMessage('Response stopped.', 'assistant');
       } else if (err instanceof Refused) {
         stream.discard();
-        this.widget.addMessage(UNAVAILABLE, 'assistant');
+        this.widget.addMessage(this.cfg.showLimitReasons && err.message ? err.message : UNAVAILABLE, 'assistant');
         console.warn(`[Skavelo] ${err.message}`);
       } else {
         stream.discard();
