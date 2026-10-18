@@ -65,7 +65,7 @@ export class SkavelInstance {
     this.cfg = { ...cfg, user };
 
     this.net = new NetworkClient(cfg.apiUrl ?? DEFAULT_API_URL, cfg.agentId, cfg.previewPass);
-    this.session = new SessionStore(cfg.agentId);
+    this.session = new SessionStore(cfg.agentId, () => this.cfg.user?.id);
 
     this.shadowHost = new ShadowHost();
     const root = this.shadowHost.getRoot();
@@ -80,7 +80,12 @@ export class SkavelInstance {
         this.emit({ type: 'open' });
       },
       onIntent: () => this.warm(),
-      onClose: () => this.emit({ type: 'close' }),
+      onClose: () => {
+        // Closing the widget mid-walkthrough means the user is done with it. Leaving it running
+        // would reopen the widget on the next page change, such as clicking into a field.
+        if (this.showMode) this.endWalkthrough();
+        this.emit({ type: 'close' });
+      },
       onStepNext: () => this.advanceStep(),
       onStepBack: () => this.backStep(),
       onFeedback: (id, rating) => {
@@ -190,8 +195,12 @@ export class SkavelInstance {
 
   identify(user: UserContext): this {
     this.cfg = { ...this.cfg, user };
+    // Only an anonymous conversation, or this user's own, is still returned here.
     const convId = this.session.getConversationId();
-    if (convId) this.net.identify(convId, user).catch(() => {});
+    if (convId) {
+      this.net.identify(convId, user).catch(() => {});
+      this.session.setConversationId(convId);
+    }
     // Signed in state and attributes can change who the widget is for.
     this.applyTargeting();
     return this;
@@ -301,7 +310,7 @@ export class SkavelInstance {
         res = await this.net.ask(payload, controller.signal);
       }
 
-      this.session.set({ conversationId: res.conversationId });
+      this.session.setConversationId(res.conversationId);
       this.widget.setLoading(false);
 
       if (res.mode === 'show' && res.show?.steps.length) {
@@ -480,7 +489,9 @@ export class SkavelInstance {
 
     if (view.el) {
       this.highlight.point(view.el);
-      this.watchTarget(view.el);
+      // A link to the step's page doesn't finish the step; the page it opens shows the step again.
+      if (view.bridge) this.unwatchTarget();
+      else this.watchTarget(view.el);
     } else {
       this.highlight.hide();
       this.unwatchTarget();

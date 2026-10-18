@@ -46,10 +46,13 @@ describe('ShowMode.resolve', () => {
   const session = { setWalkthrough: () => {} } as unknown as SessionStore;
   const onAutomations = (s: ShowStep): ShowStep => ({ ...s, pageUrlPattern: '/automations' });
 
-  it("doesn't highlight a look-alike button on another page", () => {
+  it("doesn't highlight a look-alike button on another page; it points the way there instead", () => {
     history.replaceState(null, '', '/audience');
     const view = new ShowMode({ workflowId: 'w', steps: [onAutomations(step('button', 'Journey actions'))] }, session, () => {}).resolve();
-    expect(view?.el).toBeNull();
+    expect(view?.el?.getAttribute('aria-label')).not.toBe('Journey actions');
+    expect(view?.bridge).toBe(true);
+    expect(view?.el?.getAttribute('href')).toMatch(/^\/automations/);
+    expect(view?.instruction).toBe('Open **Automations** first.');
   });
 
   it('highlights it on its own page', () => {

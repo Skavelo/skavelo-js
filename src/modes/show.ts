@@ -8,6 +8,11 @@ export interface StepView {
   total: number;
   /** Null when no locator matched well enough; the step is still shown, just not highlighted. */
   el: Element | null;
+  /**
+   * The step is on another page and el is a link there, like the Settings icon for a step in
+   * Settings. Following it doesn't finish the step: the step shows again on the page it opens.
+   */
+  bridge?: boolean;
 }
 
 /**
@@ -62,6 +67,19 @@ export class ShowMode {
       && !el?.closest('a[href], nav, header, aside, [role="navigation"], [role="banner"]');
     const found = !!el && isFreshEnough(score) && !elsewhere;
 
+    // The step belongs on another page: point at a link that goes there first.
+    const way = !found && step.pageUrlPattern && !onPage(step.pageUrlPattern) ? wayTo(step.pageUrlPattern) : null;
+    if (way) {
+      this.emit({ type: 'step', stepIndex: this.stepIndex, stepInstruction: step.instruction, elementFound: true });
+      return {
+        instruction: `Open **${way.label}** first.`,
+        stepIndex: this.stepIndex,
+        total: this.payload.steps.length,
+        el: way.el,
+        bridge: true,
+      };
+    }
+
     this.emit({
       type: 'step',
       stepIndex: this.stepIndex,
@@ -108,6 +126,35 @@ export class ShowMode {
   private persist() {
     this.session.setWalkthrough({ payload: this.payload, stepIndex: this.stepIndex, messageId: this.messageId });
   }
+}
+
+/**
+ * A visible link on this page to the page a step is on: one that goes there exactly, or else the
+ * closest one above it, like /settings for a step on /settings/compliance. Null when there's none.
+ */
+export function wayTo(pattern: string): { el: HTMLAnchorElement; label: string } | null {
+  const target = pattern.split('#')[0].replace(/\/+$/, '') || '/';
+  let best: { el: HTMLAnchorElement; label: string; rank: number } | null = null;
+  for (const a of Array.from(document.querySelectorAll<HTMLAnchorElement>('a[href]'))) {
+    let path: string;
+    try {
+      const u = new URL(a.href);
+      if (u.origin !== location.origin) continue;
+      path = u.pathname.replace(/\/+$/, '') || '/';
+    } catch {
+      continue;
+    }
+    const exact = onPage(target, path);
+    const above = !exact && path !== '/' && target.startsWith(`${path}/`);
+    if (!exact && !above) continue;
+    const r = a.getBoundingClientRect();
+    if (r.width === 0 || r.height === 0 || getComputedStyle(a).visibility === 'hidden') continue;
+    const label = (a.getAttribute('aria-label') || a.textContent || a.title || '').replace(/\s+/g, ' ').trim();
+    if (!label) continue;
+    const rank = exact ? 10_000 : path.length;
+    if (!best || rank > best.rank) best = { el: a, label, rank };
+  }
+  return best && { el: best.el, label: best.label };
 }
 
 /** How many leading steps are links to the current page, e.g. "Click **Automations**" while on Automations. */

@@ -75,7 +75,8 @@ function findByAriaRoleAndName(role: string, name: string): Element | null {
   const nativeMap: Record<string, string> = {
     button: 'button',
     link: 'a',
-    textbox: 'input,textarea',
+    textbox: 'input:not([type=checkbox]):not([type=radio]):not([type=button]):not([type=submit]):not([type=hidden]),textarea',
+    combobox: 'select',
     checkbox: 'input[type=checkbox]',
     radio: 'input[type=radio]',
   };
@@ -110,7 +111,43 @@ function computedAriaLabel(el: Element): string {
     if (label) return label.textContent?.trim() ?? '';
   }
 
-  return (el as HTMLElement).innerText?.trim() ?? '';
+  const wrap = el.closest('label');
+  if (wrap?.textContent?.trim()) return wrap.textContent.trim();
+  const text = (el as HTMLElement).innerText?.trim();
+  if (text) return text;
+  if (el.matches(FIELDS)) {
+    const near = nearbyLabel(el);
+    if (near) return near;
+  }
+  return (el.getAttribute('placeholder') || el.getAttribute('title') || el.getAttribute('name') || '').trim();
+}
+
+const FIELDS = 'input, textarea, select, [role="combobox"], [role="textbox"], [role="switch"], [role="checkbox"]';
+const CONTROLS = 'input, textarea, select, button, [role="switch"], [role="checkbox"], [role="combobox"]';
+
+/**
+ * A field whose label isn't tied to it, like <label>Street address</label><input>: the short text
+ * just before it. The same rule learning uses to name fields (backend crawler.ts labelFor), so a
+ * field it recorded as "Street address" is found here by that name. Never climbs into a box holding
+ * other fields, where the text before it belongs to the whole section.
+ */
+function nearbyLabel(el: Element): string {
+  let node: Element | null = el;
+  for (let depth = 0; node && depth < 3; depth++) {
+    for (let prev = node.previousElementSibling; prev; prev = prev.previousElementSibling) {
+      if (prev.querySelector(CONTROLS) || prev.matches(CONTROLS)) return '';
+      const t = (prev as HTMLElement).innerText?.trim() ?? '';
+      if (!t) continue;
+      const lead = prev.children.length > 1 ? ((prev.firstElementChild as HTMLElement).innerText?.trim() ?? '') : '';
+      if (lead && lead.length <= 40 && !lead.includes('\n')) return lead;
+      const first = t.split('\n')[0].trim();
+      return first && first.length <= 40 ? first : '';
+    }
+    const parent: Element | null = node.parentElement;
+    if (!parent || parent.querySelectorAll(CONTROLS).length > 1) return '';
+    node = parent;
+  }
+  return '';
 }
 
 function findByText(text: string): Element | null {
