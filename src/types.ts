@@ -30,6 +30,13 @@ export interface SkaveloCfg {
    * signed-in team member try the agent on any page, and their questions don't use the plan.
    */
   previewPass?: string;
+  /**
+   * What the widget may gather to work out why something isn't working. Errors on screen and
+   * switched off buttons are always read, like the rest of the page. network: notes the app's
+   * failed requests (method, path and status only; never bodies, headers or query strings).
+   * On unless set to false.
+   */
+  diagnostics?: { network?: boolean };
 }
 
 export interface ActionsCfg {
@@ -109,6 +116,28 @@ export interface AskPayload {
   canHandoff?: boolean;
   /** What the app returned for a lookup Skavelo asked for; finishes the same question. */
   lookup?: LookupResult;
+  /** What the screen shows that could explain a problem, for questions like "why isn't this working?". */
+  pageSignals?: PageSignals;
+}
+
+export interface PageSignals {
+  /** Error text on screen: alerts, error toasts, invalid fields. */
+  errors?: string[];
+  /** The app's requests that failed in the last 2 minutes. */
+  failedRequests?: FailedRequest[];
+  /** Switched off buttons, with the reason the app gives. */
+  disabled?: { label: string; reason?: string }[];
+}
+
+export interface FailedRequest {
+  method: string;
+  /** Without the query string; IDs and tokens become :id. */
+  path: string;
+  /** Only for requests to another site. */
+  host?: string;
+  /** HTTP status, or 0 when the request didn't complete. */
+  status: number;
+  secondsAgo?: number;
 }
 
 export interface LookupResult {
@@ -148,6 +177,8 @@ export interface AskResponse {
   look?: LookPayload;
   /** The agent couldn't help or the visitor asked for a person: offer one under this answer. */
   handoff?: boolean;
+  /** For a reported problem: what Skavelo checked and found, passed on if a person takes over. */
+  diagnosis?: string;
 }
 
 export interface AnswerPayload {
@@ -232,6 +263,8 @@ export type SkavelEvent =
       /** A short message for your team: what they asked, and on which page. */
       summary: string;
       question?: string;
+      /** For a reported problem: what Skavelo checked and found. */
+      diagnosis?: string;
       pageUrl: string;
     }
   | { type: "open" }

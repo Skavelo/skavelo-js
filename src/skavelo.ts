@@ -24,6 +24,7 @@ import { ShadowHost } from './ui/shadow-host';
 import { HighlightOverlay } from './ui/highlight';
 import { Widget, type HandoffOffer } from './ui/widget';
 import { findChatTool, openChatTool } from './core/chat-tools';
+import { collectPageSignals, watchRequests } from './core/signals';
 
 /** What visitors see when a limit or the allowed sites check stops an answer. */
 const UNAVAILABLE = "Help isn't available right now. Please try again later.";
@@ -32,11 +33,22 @@ const UNAVAILABLE = "Help isn't available right now. Please try again later.";
 const ASKED_FOR_PERSON = /\b(human|person|someone|somebody|agent|support|representative|rep|real people|talk to|speak (to|with)|contact)\b/i;
 
 /** The first message a person on the team sees. */
-function handoffSummary(question: string | undefined, pageTitle: string): string {
+function handoffSummary(question: string | undefined, pageTitle: string, diagnosis?: string): string {
   const page = pageTitle.trim() ? ` on "${pageTitle.trim()}"` : '';
-  return question
+  const asked = question
     ? `Hello, I was using the help assistant${page} and need help with: ${question}`
     : `Hello, I need help with something${page}.`;
+  return diagnosis ? `${asked}\n\nWhat the assistant checked: ${diagnosis}` : asked;
+}
+
+/** The page's signals, left out when there's nothing to report or reading them fails. */
+function pageSignalsOrNothing() {
+  try {
+    const signals = collectPageSignals();
+    return Object.keys(signals).length ? { pageSignals: signals } : {};
+  } catch {
+    return {};
+  }
 }
 
 export class SkavelInstance {
@@ -54,6 +66,8 @@ export class SkavelInstance {
   private frame = 0;
   /** The visitor's last question, for the message a person on the team sees first. */
   private lastQuestion = '';
+  /** What Skavelo found for the last reported problem, passed on to the team. */
+  private lastDiagnosis: string | undefined;
   private remote: RemoteConfig | null = null;
   private stopWatchingUrl: () => void;
   private bucket = visitorBucket();
@@ -65,6 +79,7 @@ export class SkavelInstance {
     this.cfg = { ...cfg, user };
 
     this.net = new NetworkClient(cfg.apiUrl ?? DEFAULT_API_URL, cfg.agentId, cfg.previewPass);
+    if (cfg.diagnostics?.network !== false) watchRequests(cfg.apiUrl ?? DEFAULT_API_URL);
     this.session = new SessionStore(cfg.agentId, () => this.cfg.user?.id);
 
     this.shadowHost = new ShadowHost();
@@ -283,6 +298,7 @@ export class SkavelInstance {
     const controller = reuse ?? new AbortController();
     this.inFlight = controller;
     this.lastQuestion = question;
+    if (!lookup) this.lastDiagnosis = undefined;
     if (lookup) this.widget.setLoading(true);
 
     const payload = {
@@ -297,6 +313,7 @@ export class SkavelInstance {
       // Lets Skavelo mention the "Talk to a person" button only where it can actually show.
       ...(this.handoffRoute() ? { canHandoff: true } : {}),
       ...(lookup ? { lookup } : {}),
+      ...pageSignalsOrNothing(),
     };
     const stream = this.widget.beginStream();
 
@@ -312,6 +329,7 @@ export class SkavelInstance {
 
       this.session.setConversationId(res.conversationId);
       this.widget.setLoading(false);
+      if (res.diagnosis) this.lastDiagnosis = res.diagnosis;
 
       if (res.mode === 'show' && res.show?.steps.length) {
         // Keep the intro above the walkthrough only if the server confirmed one; a streamed
@@ -392,11 +410,12 @@ export class SkavelInstance {
     }
     const pageUrl = window.location.href;
     const question = this.lastQuestion || undefined;
-    const summary = handoffSummary(question, document.title);
+    const diagnosis = this.lastDiagnosis;
+    const summary = handoffSummary(question, document.title, diagnosis);
     const report = (channel: string, extra: { email?: string; note?: string } = {}) =>
       this.net.handoff({ conversationId, reason, channel, pageUrl, ...extra });
     const fire = (channel: string) =>
-      this.emit({ type: 'handoff', conversationId, reason, channel, summary, question, pageUrl });
+      this.emit({ type: 'handoff', conversationId, reason, channel, summary, question, ...(diagnosis ? { diagnosis } : {}), pageUrl });
 
     if (route === 'chat') {
       const tool = findChatTool();

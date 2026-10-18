@@ -12,8 +12,8 @@ export type StuckSignal =
   | { kind: 'error'; text: string }
   | { kind: 'repeat'; label: string };
 
-const PRESSABLE = 'button, a[href], [role="button"], [role="menuitem"], [role="tab"], input[type="submit"], input[type="button"], summary';
-const ERRORS = '[role="alert"], [aria-live="assertive"], [data-sonner-toast][data-type="error"], .error, .alert-error, [aria-invalid="true"]';
+export const PRESSABLE = 'button, a[href], [role="button"], [role="menuitem"], [role="tab"], input[type="submit"], input[type="button"], summary';
+export const ERRORS = '[role="alert"], [aria-live="assertive"], [data-sonner-toast][data-type="error"], .error, .alert-error, [aria-invalid="true"]';
 const DISABLED_AGAIN_MS = 20_000;
 const ERROR_AGAIN_MS = 5 * 60_000;
 const REPEAT_PRESSES = 5;
@@ -27,17 +27,17 @@ export function labelOf(el: Element): string {
   return own.replace(/\s+/g, ' ').trim().slice(0, 60);
 }
 
-function isDisabled(el: Element): boolean {
+export function isDisabled(el: Element): boolean {
   return (el as HTMLButtonElement).disabled === true || el.getAttribute('aria-disabled') === 'true'
     || !!el.closest('fieldset[disabled]');
 }
 
-function hidden(el: Element): boolean {
+export function hidden(el: Element): boolean {
   return !!el.closest('[data-sk-sensitive], [data-skavelo-host], #skavelo-root');
 }
 
 /** The tooltip or note a disabled control points to, if any: "Verify your domain first". */
-function reasonFor(el: Element): string | undefined {
+export function reasonFor(el: Element): string | undefined {
   const ids = el.getAttribute('aria-describedby')?.split(/\s+/) ?? [];
   const described = ids.map((id) => document.getElementById(id)?.textContent ?? '').join(' ').trim();
   const text = described || el.getAttribute('title') || el.closest('[title]')?.getAttribute('title') || '';
@@ -45,7 +45,7 @@ function reasonFor(el: Element): string | undefined {
 }
 
 /** What an error says: the element's own text, or for an invalid field, the message tied to it. */
-function errorText(el: Element): string {
+export function errorText(el: Element): string {
   if (el.getAttribute('aria-invalid') === 'true') {
     const ids = `${el.getAttribute('aria-errormessage') ?? ''} ${el.getAttribute('aria-describedby') ?? ''}`.trim().split(/\s+/).filter(Boolean);
     return ids.map((id) => document.getElementById(id)?.textContent ?? '').join(' ').replace(/\s+/g, ' ').trim().slice(0, 140);
