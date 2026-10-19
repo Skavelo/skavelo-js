@@ -35,8 +35,21 @@ const banner = `/*! Skavelo SDK v${pkg.version} | (c) ${new Date().getFullYear()
 // The React wrapper imports the SDK by relative path while developing; in the build it points at the
 // published @skavelo/sdk instead of bundling a second copy of it.
 const sdkImport = /(^|\/)src\/(index|types)(\.ts)?$/;
-const reactExternal = (id) => isExternal(id) || sdkImport.test(id);
-const reactPaths = (id) => (sdkImport.test(id) ? '@skavelo/sdk' : id);
+// The SDK itself is external by its package name, which sdkAsPackage resolves its source files to.
+const reactExternal = (id) => isExternal(id) || id === '@skavelo/sdk';
+const sdkAsPackage = () => ({
+  name: 'sdk-as-package',
+  resolveId: (source) => (sdkImport.test(source) ? { id: '@skavelo/sdk', external: true } : null),
+});
+
+// The package is "type": "module", so Node would read the CommonJS builds as ES modules and fail on
+// require(). A package.json in each cjs folder tells Node they're CommonJS.
+const commonjsMarker = () => ({
+  name: 'commonjs-marker',
+  generateBundle() {
+    this.emitFile({ type: 'asset', fileName: 'package.json', source: '{ "type": "commonjs" }\n' });
+  },
+});
 
 /** @type {import('rollup').RollupOptions[]} */
 export default [
@@ -74,6 +87,7 @@ export default [
     },
     external: isExternal,
     plugins: [
+      commonjsMarker(),
       ...basePlugins,
       ts('dist/cjs'),
       ...(minPlugin ? [minPlugin] : []),
@@ -116,7 +130,10 @@ export default [
   // Type declarations
   {
     input: 'src/index.ts',
-    output: { dir: 'dist/types', preserveModules: true, preserveModulesRoot: 'src' },
+    output: [
+      { dir: 'dist/types', preserveModules: true, preserveModulesRoot: 'src' },
+      { dir: 'dist/cjs', preserveModules: true, preserveModulesRoot: 'src' },
+    ],
     external: isExternal,
     plugins: [dts({ compilerOptions: { outDir: 'dist/types' } })],
   },
@@ -134,10 +151,10 @@ export default [
       preserveModules: true,
       preserveModulesRoot: 'packages/react/src',
       entryFileNames: '[name].js',
-      paths: reactPaths,
     },
     external: reactExternal,
     plugins: [
+      sdkAsPackage(),
       ...basePlugins,
       ts('packages/react/dist/esm'),
       ...(minPlugin ? [minPlugin] : []),
@@ -155,10 +172,11 @@ export default [
       preserveModulesRoot: 'packages/react/src',
       entryFileNames: '[name].js',
       exports: 'named',
-      paths: reactPaths,
     },
     external: reactExternal,
     plugins: [
+      sdkAsPackage(),
+      commonjsMarker(),
       ...basePlugins,
       ts('packages/react/dist/cjs'),
       ...(minPlugin ? [minPlugin] : []),
@@ -167,13 +185,11 @@ export default [
   // React type declarations
   {
     input: 'packages/react/src/index.tsx',
-    output: {
-      dir: 'packages/react/dist/types',
-      preserveModules: true,
-      preserveModulesRoot: 'packages/react/src',
-      paths: reactPaths,
-    },
+    output: [
+      { dir: 'packages/react/dist/types', preserveModules: true, preserveModulesRoot: 'packages/react/src' },
+      { dir: 'packages/react/dist/cjs', preserveModules: true, preserveModulesRoot: 'packages/react/src' },
+    ],
     external: reactExternal,
-    plugins: [dts({ compilerOptions: { outDir: 'packages/react/dist/types' } })],
+    plugins: [sdkAsPackage(), dts({ compilerOptions: { outDir: 'packages/react/dist/types' } })],
   },
 ];

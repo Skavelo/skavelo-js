@@ -1,6 +1,6 @@
 {
   "name": "@skavelo/sdk",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Skavelo's in-product AI guide: answers your users' questions, walks them through your app and runs actions they approve.",
   "type": "module",
   "license": "Elastic-2.0",
@@ -13,14 +13,24 @@
   "types": "./dist/types/index.d.ts",
   "exports": {
     ".": {
-      "import": "./dist/esm/index.js",
-      "require": "./dist/cjs/index.js",
-      "types": "./dist/types/index.d.ts"
+      "import": {
+        "types": "./dist/types/index.d.ts",
+        "default": "./dist/esm/index.js"
+      },
+      "require": {
+        "types": "./dist/cjs/index.d.ts",
+        "default": "./dist/cjs/index.js"
+      }
     },
     "./react": {
-      "import": "./packages/react/dist/esm/index.js",
-      "require": "./packages/react/dist/cjs/index.js",
-      "types": "./packages/react/dist/types/index.d.ts"
+      "import": {
+        "types": "./packages/react/dist/types/index.d.ts",
+        "default": "./packages/react/dist/esm/index.js"
+      },
+      "require": {
+        "types": "./packages/react/dist/cjs/index.d.ts",
+        "default": "./packages/react/dist/cjs/index.js"
+      }
     }
   },
   "files": [
@@ -37,6 +47,7 @@
     "test:watch": "vitest",
     "clean": "rm -rf dist packages/react/dist",
     "publish:cdn": "bash scripts/publish-cdn.sh",
+    "release": "bash scripts/release.sh",
     "build:release": "pnpm clean && NODE_ENV=production rollup -c",
     "check:package": "node scripts/check-package.mjs",
     "prepublishOnly": "npm run build:release && npm run check:package",
