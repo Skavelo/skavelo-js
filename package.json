@@ -37,7 +37,7 @@
     "test:watch": "vitest",
     "clean": "rm -rf dist packages/react/dist",
     "publish:cdn": "bash scripts/publish-cdn.sh",
-    "build:release": "NODE_ENV=production rollup -c",
+    "build:release": "pnpm clean && NODE_ENV=production rollup -c",
     "check:package": "node scripts/check-package.mjs",
     "prepublishOnly": "npm run build:release && npm run check:package",
     "prepare": "husky"

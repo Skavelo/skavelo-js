@@ -110,7 +110,6 @@ export class SkavelInstance {
       },
     });
 
-    this.setupMutationObserver();
     this.restoreSession();
     this.stopWatchingUrl = watchUrl(() => this.applyTargeting());
     this.loadRemoteConfig(prefetched);
@@ -149,7 +148,11 @@ export class SkavelInstance {
   private watchForStuck() {
     if (this.remote?.stuckHelp === false || this.stuck || typeof MutationObserver === 'undefined') return;
     this.stuck = new StuckWatcher((signal) => this.offerHelp(signal));
-    this.stuck.start();
+    // Nobody is stuck in the first moments, so it starts once the page has settled.
+    const stuck = this.stuck;
+    const start = () => { if (this.stuck === stuck) stuck.start(); };
+    if (typeof requestIdleCallback === 'function') requestIdleCallback(start, { timeout: 3000 });
+    else setTimeout(start, 1500);
   }
 
   /**
@@ -496,6 +499,7 @@ export class SkavelInstance {
 
   private startWalkthrough(payload: ShowPayload, opts: { messageId?: string; startAt?: number } = {}) {
     this.showMode = new ShowMode(payload, this.session, (e) => this.emit(e), opts);
+    this.watchPage(true);
     this.autoStep = -1;
     this.autoPaused = false;
     this.renderStep();
@@ -581,6 +585,7 @@ export class SkavelInstance {
     this.replayOf = null;
     // The completion message stays put; targeting is checked again on the next page change.
     this.showMode = null;
+    this.watchPage(false);
     this.unwatchTarget();
     this.highlight.hide();
     this.widget.clearStep();
@@ -614,6 +619,7 @@ export class SkavelInstance {
     if (messageId) this.net.walkthroughResult({ messageId, outcome: 'abandoned', atStep }).catch(() => {});
     this.showMode?.abandon();
     this.showMode = null;
+    this.watchPage(false);
     this.applyTargeting();
     this.unwatchTarget();
     this.highlight.hide();
@@ -648,8 +654,17 @@ export class SkavelInstance {
 
   // ─── SPA changes ───────────────────────────────────────────────────────────
 
-  private setupMutationObserver() {
-    // document.body can be null when the script runs in <head>.
+  /**
+   * Follows the page while a walkthrough runs, so the highlight moves when the page changes.
+   * Only then: on a busy app, watching every change all the time would be work for nothing.
+   */
+  private watchPage(on: boolean) {
+    if (!on) {
+      this.mutationObserver?.disconnect();
+      this.mutationObserver = null;
+      return;
+    }
+    if (this.mutationObserver || typeof MutationObserver === 'undefined') return;
     this.mutationObserver = new MutationObserver(() => {
       if (!this.showMode) return;
       cancelAnimationFrame(this.frame);

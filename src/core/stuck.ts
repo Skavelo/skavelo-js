@@ -18,6 +18,8 @@ const DISABLED_AGAIN_MS = 20_000;
 const ERROR_AGAIN_MS = 5 * 60_000;
 const REPEAT_PRESSES = 5;
 const REPEAT_WINDOW_MS = 3_000;
+/** At most this often: reading error text makes the browser lay the page out again. */
+const SCAN_EVERY_MS = 400;
 // Steppers and the like are meant to be pressed many times.
 const MEANT_TO_REPEAT = /^[+\-−–]$|increase|decrease|increment|decrement|next|previous|prev|more|zoom|undo|redo|›|‹|»|«/i;
 
@@ -59,15 +61,19 @@ export class StuckWatcher {
   private errorsSeen = new Map<string, number>();
   private visible = new Set<string>();
   private observer: MutationObserver | null = null;
-  private frame = 0;
+  private timer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(private onStuck: (signal: StuckSignal) => void, private now: () => number = () => Date.now()) {}
 
   start() {
     document.addEventListener('pointerdown', this.onPress, true);
+    // A busy page changes many times a second; scan once the changes pause, at most every SCAN_EVERY_MS.
     this.observer = new MutationObserver(() => {
-      cancelAnimationFrame(this.frame);
-      this.frame = requestAnimationFrame(() => this.scanErrors());
+      if (this.timer) return;
+      this.timer = setTimeout(() => {
+        this.timer = null;
+        this.scanErrors();
+      }, SCAN_EVERY_MS);
     });
     this.observer.observe(document.documentElement, {
       childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ['aria-invalid', 'role', 'hidden', 'class'],
@@ -78,7 +84,8 @@ export class StuckWatcher {
   stop() {
     document.removeEventListener('pointerdown', this.onPress, true);
     this.observer?.disconnect();
-    cancelAnimationFrame(this.frame);
+    if (this.timer) clearTimeout(this.timer);
+    this.timer = null;
   }
 
   private onPress = (e: Event) => {

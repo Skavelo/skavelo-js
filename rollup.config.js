@@ -79,6 +79,23 @@ export default [
       ...(minPlugin ? [minPlugin] : []),
     ],
   },
+  // The script-tag loader, published as skavelo.js. It loads the widget from its versioned address
+  // (published as <version>/skavelo.js); while developing, from skavelo.min.js next to it.
+  {
+    input: 'src/loader.ts',
+    output: { file: 'dist/skavelo.js', format: 'iife', banner },
+    plugins: [
+      {
+        name: 'bundle-path',
+        transform: (code, id) =>
+          id.endsWith('src/loader.ts')
+            ? code.replace(/__SK_BUNDLE__/g, JSON.stringify(isProduction ? `${pkg.version}/skavelo.js` : 'skavelo.min.js'))
+            : null,
+      },
+      ts('dist'),
+      minify(),
+    ],
+  },
   // IIFE bundle for CDN script tag usage
   {
     input: 'src/cdn.ts',
