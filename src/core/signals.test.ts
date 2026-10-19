@@ -50,3 +50,17 @@ describe('collectPageSignals', () => {
     expect(collectPageSignals()).toEqual({});
   });
 });
+
+describe('diagnosisNote', () => {
+  it('labels the checks once', async () => {
+    const { diagnosisNote } = await import('../skavelo');
+    expect(diagnosisNote('Checked: the error on screen; saving was refused (403). Likely cause: the role.')).toBe(
+      'The assistant checked: the error on screen; saving was refused (403). Likely cause: the role.',
+    );
+  });
+
+  it('keeps a diagnosis with nothing checked readable', async () => {
+    const { diagnosisNote } = await import('../skavelo');
+    expect(diagnosisNote("The cause wasn't found.")).toBe("From the assistant: The cause wasn't found.");
+  });
+});

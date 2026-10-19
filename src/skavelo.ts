@@ -38,7 +38,16 @@ function handoffSummary(question: string | undefined, pageTitle: string, diagnos
   const asked = question
     ? `Hello, I was using the help assistant${page} and need help with: ${question}`
     : `Hello, I need help with something${page}.`;
-  return diagnosis ? `${asked}\n\nWhat the assistant checked: ${diagnosis}` : asked;
+  return diagnosis ? `${asked}\n\n${diagnosisNote(diagnosis)}` : asked;
+}
+
+/**
+ * The diagnosis as one line for your team. The server writes it as "Checked: …. Likely cause: …",
+ * so the label takes the place of its "Checked:" instead of repeating it.
+ */
+export function diagnosisNote(diagnosis: string): string {
+  const checked = diagnosis.replace(/^checked:\s*/i, '');
+  return checked === diagnosis ? `From the assistant: ${diagnosis}` : `The assistant checked: ${checked}`;
 }
 
 /** The page's signals, left out when there's nothing to report or reading them fails. */
