@@ -11,6 +11,10 @@ interface SkaveloContextValue {
   open: () => void;
   close: () => void;
   ask: (question: string) => void;
+  /** Plays one of the agent's walkthroughs by its id, without asking the AI. */
+  startWorkflow: (workflowId: string, opts?: { intro?: boolean }) => void;
+  /** Something the user just did, like "project_created"; walkthrough offers set for it may show. */
+  event: (name: string) => void;
 }
 
 const SkaveloContext = createContext<SkaveloContextValue | null>(null);
@@ -67,6 +71,8 @@ export function SkaveloProvider({ children, cfg, ...props }: SkaveloProviderProp
     open: () => { sk?.open(); },
     close: () => { sk?.close(); },
     ask: (q: string) => { sk?.ask(q); },
+    startWorkflow: (id: string, opts?: { intro?: boolean }) => { sk?.startWorkflow(id, opts); },
+    event: (name: string) => { sk?.event(name); },
   };
   return <SkaveloContext.Provider value={value}>{children}</SkaveloContext.Provider>;
 }

@@ -1,4 +1,4 @@
-import type { AskPayload, AskResponse, FeedbackPayload, RemoteConfig, UserContext } from '../types';
+import type { AskPayload, AskResponse, FeedbackPayload, RemoteConfig, ShowPayload, UserContext } from '../types';
 
 /** Where the widget talks to Skavelo unless `apiUrl` says otherwise. */
 export const DEFAULT_API_URL = 'https://api.skavelo.com/api';
@@ -103,6 +103,20 @@ export class NetworkClient {
 
   async skillResult(payload: { messageId: string; outcome: 'approved' | 'rejected' | 'succeeded' | 'failed'; detail?: string }): Promise<void> {
     await this.request('POST', `${SDK_ROUTES}/skill-result`, payload);
+  }
+
+  /** Whether this visitor should see a walkthrough offer; the server records it as shown when yes. */
+  async offerShown(offerId: string, visitorKey: string): Promise<{ show: boolean }> {
+    return this.request('POST', `${SDK_ROUTES}/offers/${encodeURIComponent(offerId)}/shown`, { visitorKey });
+  }
+
+  async offerResult(offerId: string, visitorKey: string, action: 'accepted' | 'dismissed' | 'completed'): Promise<void> {
+    await this.request('POST', `${SDK_ROUTES}/offers/${encodeURIComponent(offerId)}/result`, { visitorKey, action });
+  }
+
+  /** A saved walkthrough, played without asking the AI. Costs no conversation. */
+  async walkthrough(workflowId: string): Promise<ShowPayload> {
+    return this.request<ShowPayload>('GET', `${SDK_ROUTES}/walkthroughs/${encodeURIComponent(workflowId)}`);
   }
 
   async walkthroughResult(payload: { messageId: string; outcome: 'completed' | 'abandoned'; atStep?: number }): Promise<void> {

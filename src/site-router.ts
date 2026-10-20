@@ -73,6 +73,15 @@ export class SiteRouter {
   open(): this { this.current?.open(); return this; }
   close(): this { this.current?.close(); return this; }
   async ask(question: string): Promise<void> { await this.current?.ask(question); }
+  /** Plays a walkthrough of the agent showing on this page; another agent's id isn't found. */
+  startWorkflow(workflowId: string, opts?: { intro?: boolean }): this {
+    this.current?.startWorkflow(workflowId, opts);
+    return this;
+  }
+  event(name: string): this {
+    this.current?.event(name);
+    return this;
+  }
 
   on<T extends SkavelEvent['type']>(event: T, handler: EventHandler<Extract<SkavelEvent, { type: T }>>): this {
     this.handlers.push([event, handler as EventHandler]);

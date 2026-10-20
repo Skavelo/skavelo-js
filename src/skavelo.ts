@@ -10,13 +10,17 @@ import type {
   DoPayload,
   RemoteConfig,
   HandoffReason,
+  WalkthroughOffer,
 } from './types';
 import { DEFAULT_API_URL, NetworkClient, Refused, StreamUnavailable } from './core/network';
 import { runAction, runLookup } from './core/actions';
 import { canClickFor, checkThen, fillField } from './core/fill';
 import { StuckWatcher, helpFor, type StuckSignal } from './core/stuck';
 import { takePendingUser } from './core/pending-user';
-import { currentDevice, matchesTargeting, suggestionsFor, visitorBucket, watchUrl } from './core/targeting';
+import { currentDevice, matchesTargeting, suggestionsFor, visitorBucket, watchUrl, type VisitContext } from './core/targeting';
+import {
+  answeredOffers, markOfferedThisVisit, offerFor, offeredThisVisit, offerVisitorKey, rememberOffer, typingInApp,
+} from './core/offers';
 import { SessionStore } from './core/session';
 import { scanPage } from './core/dom-scanner';
 import { ShowMode } from './modes/show';
@@ -207,10 +211,81 @@ export class SkavelInstance {
    */
   private applyTargeting() {
     if (!this.remote) return;
-    const ctx = { path: location.pathname + location.hash, user: this.cfg.user, device: currentDevice(), bucket: this.bucket, origin: location.origin };
+    const ctx = this.visit();
     const show = this.remote.available !== false && (!!this.showMode || matchesTargeting(this.remote.targeting, ctx));
     this.widget.setHidden(!show);
     this.widget.setSuggestions(suggestionsFor(this.remote.suggestions, ctx));
+    if (show) this.considerOffer();
+  }
+
+  private visit(): VisitContext {
+    return { path: location.pathname + location.hash, user: this.cfg.user, device: currentDevice(), bucket: this.bucket, origin: location.origin };
+  }
+
+  // ─── Walkthrough offers ────────────────────────────────────────────────────
+
+  private offerTimer = 0;
+  /** The offer whose walkthrough is running, so finishing it can be reported. */
+  private offerRun: { offerId: string; workflowId: string } | null = null;
+
+  /**
+   * Looks for a walkthrough offer that fits this page (or the event the app just reported) and
+   * shows it after its delay. One offer a visit, never over an answer, a walkthrough, stuck help
+   * or someone typing, and never one this visitor already answered.
+   */
+  private considerOffer(event?: string, tries = 0) {
+    if (!this.remote?.offers?.length || offeredThisVisit()) return;
+    const offer = offerFor(this.remote.offers, this.visit(), { event, answered: answeredOffers() });
+    if (!offer) return;
+    clearTimeout(this.offerTimer);
+    const delay = tries ? 4000 : Math.max(0, offer.delaySeconds) * 1000;
+    this.offerTimer = window.setTimeout(() => {
+      // The visitor may have moved on, or be in the middle of something.
+      if (offeredThisVisit() || this.widget.nudging || this.showMode || this.inFlight) return;
+      if (offerFor(this.remote?.offers, this.visit(), { event, answered: answeredOffers() })?.id !== offer.id) return;
+      if (typingInApp()) {
+        if (tries < 5) this.considerOffer(event, tries + 1);
+        return;
+      }
+      void this.showOffer(offer);
+    }, delay);
+  }
+
+  private async showOffer(offer: WalkthroughOffer) {
+    const key = offerVisitorKey(this.cfg.user?.id);
+    let show = false;
+    try {
+      ({ show } = await this.net.offerShown(offer.id, key));
+    } catch {
+      return;
+    }
+    // Answered on another device, or shown enough times already.
+    if (!show) {
+      rememberOffer(offer.id, 'dismissed');
+      return;
+    }
+    if (this.showMode || this.inFlight || this.widget.nudging) return;
+    const shown = this.widget.nudge(
+      offer.message,
+      () => {
+        rememberOffer(offer.id, 'accepted');
+        this.net.offerResult(offer.id, key, 'accepted').catch(() => {});
+        this.emit({ type: 'offer', offerId: offer.id, workflowId: offer.workflowId, action: 'accepted' });
+        this.offerRun = { offerId: offer.id, workflowId: offer.workflowId };
+        void this.playWalkthrough(offer.workflowId, { intro: true, source: 'offer' }).then((started) => {
+          if (!started) this.offerRun = null;
+        });
+      },
+      () => {
+        rememberOffer(offer.id, 'dismissed');
+        this.net.offerResult(offer.id, key, 'dismissed').catch(() => {});
+        this.emit({ type: 'offer', offerId: offer.id, workflowId: offer.workflowId, action: 'dismissed' });
+      },
+    );
+    if (!shown) return;
+    // Stuck help can still take its place: someone stuck needs help more than a tour.
+    markOfferedThisVisit();
+    this.emit({ type: 'offer', offerId: offer.id, workflowId: offer.workflowId, action: 'shown' });
   }
 
   // ─── Public API ────────────────────────────────────────────────────────────
@@ -218,6 +293,15 @@ export class SkavelInstance {
   /** Mid answer or mid walkthrough: the one-snippet setup won't swap agents under the visitor. */
   get busy(): boolean {
     return !!this.showMode || !!this.inFlight;
+  }
+
+  /**
+   * Tells Skavelo something the user just did in your app, like event('project_created'). A
+   * walkthrough offer set up for that event may show. Nothing is sent or stored.
+   */
+  event(name: string): this {
+    this.considerOffer(name);
+    return this;
   }
 
   identify(user: UserContext): this {
@@ -257,8 +341,13 @@ export class SkavelInstance {
     await this.runAsk(question);
   }
 
-  startWorkflow(workflowId: string): this {
-    this.ask(`/run:${workflowId}`);
+  /**
+   * Plays one of the agent's walkthroughs, by its id from the dashboard, without asking the AI, so
+   * it costs no conversation. An introduction with its name, what it does and Start comes first,
+   * unless intro is false (for your own "Show me how" button, say).
+   */
+  startWorkflow(workflowId: string, opts: { intro?: boolean } = {}): this {
+    void this.playWalkthrough(workflowId, { intro: opts.intro !== false, source: 'code' });
     return this;
   }
 
@@ -285,6 +374,7 @@ export class SkavelInstance {
 
   destroy(): void {
     this.stuck?.stop();
+    clearTimeout(this.offerTimer);
     this.stopWatchingUrl();
     this.unwatchTarget();
     cancelAnimationFrame(this.frame);
@@ -348,6 +438,7 @@ export class SkavelInstance {
         // placeholder like "none" is dropped.
         if (res.intro) stream.complete(res.intro, []);
         else stream.discard();
+        this.emit({ type: 'walkthrough_start', workflowId: res.show.workflowId, source: 'asked' });
         this.startWalkthrough(res.show, { messageId: res.messageId });
       } else if (res.mode === 'look' && res.look?.request && !lookup) {
         stream.status(res.intro ?? `Checking ${res.look.skillName}.`);
@@ -506,6 +597,42 @@ export class SkavelInstance {
   /** Set when the visitor steps back during a fill: from then on they're doing it themselves. */
   private autoPaused = false;
 
+  /**
+   * Fetches a saved walkthrough and plays it, after an introduction when intro is set. Resolves to
+   * true once the visitor starts it, false if they chose Not now or it couldn't be loaded.
+   */
+  private async playWalkthrough(
+    workflowId: string,
+    opts: { intro: boolean; source: 'code' | 'offer' },
+  ): Promise<boolean> {
+    let payload: ShowPayload;
+    try {
+      payload = await this.net.walkthrough(workflowId);
+    } catch (err) {
+      console.warn(`[Skavelo] The walkthrough ${workflowId} couldn't be loaded.`, err);
+      return false;
+    }
+    if (!payload.steps?.length) return false;
+    const begin = () => {
+      if (this.showMode) this.endWalkthrough();
+      this.emit({ type: 'walkthrough_start', workflowId: payload.workflowId, source: opts.source });
+      this.startWalkthrough(payload);
+    };
+    if (!opts.intro) {
+      begin();
+      return true;
+    }
+    return new Promise((settle) => {
+      this.widget.showIntro(
+        { name: payload.name ?? 'Walkthrough', description: payload.description, total: payload.steps.length },
+        (start) => {
+          if (start) begin();
+          settle(start);
+        },
+      );
+    });
+  }
+
   private startWalkthrough(payload: ShowPayload, opts: { messageId?: string; startAt?: number } = {}) {
     this.showMode = new ShowMode(payload, this.session, (e) => this.emit(e), opts);
     this.watchPage(true);
@@ -534,6 +661,8 @@ export class SkavelInstance {
     this.widget.showStep({
       title: this.showMode.title,
       instruction: filling && last ? checkThen(view.instruction) : view.instruction,
+      heading: view.heading,
+      details: view.details,
       stepIndex: view.stepIndex,
       total: view.total,
       found: !!view.el,
@@ -590,6 +719,10 @@ export class SkavelInstance {
     const messageId = this.showMode?.messageId;
     // Replays have no message id, so only the first run is counted.
     if (messageId) this.net.walkthroughResult({ messageId, outcome: 'completed' }).catch(() => {});
+    if (this.offerRun && payload?.workflowId === this.offerRun.workflowId) {
+      this.net.offerResult(this.offerRun.offerId, offerVisitorKey(this.cfg.user?.id), 'completed').catch(() => {});
+    }
+    this.offerRun = null;
     const replayOf = this.replayOf;
     this.replayOf = null;
     // The completion message stays put; targeting is checked again on the next page change.
@@ -622,6 +755,7 @@ export class SkavelInstance {
 
   private endWalkthrough() {
     clearTimeout(this.autoTimer);
+    this.offerRun = null;
     this.replayOf = null;
     const messageId = this.showMode?.messageId;
     const atStep = this.showMode?.stepIndexNow;

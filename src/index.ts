@@ -12,6 +12,10 @@ export interface SkaveloWidget {
   open(): unknown;
   close(): unknown;
   ask(question: string): Promise<void>;
+  /** Plays one of the agent's walkthroughs by its id, without asking the AI. */
+  startWorkflow(workflowId: string, opts?: { intro?: boolean }): unknown;
+  /** Something the user just did in your app, like "project_created"; offers set for it may show. */
+  event(name: string): unknown;
   on<T extends SkavelEvent['type']>(event: T, handler: EventHandler<Extract<SkavelEvent, { type: T }>>): unknown;
   off<T extends SkavelEvent['type']>(event: T, handler: EventHandler<Extract<SkavelEvent, { type: T }>>): unknown;
   destroy(): void;
@@ -22,6 +26,8 @@ const serverStub: SkaveloWidget = {
   open: () => serverStub,
   close: () => serverStub,
   ask: async () => {},
+  startWorkflow: () => serverStub,
+  event: () => serverStub,
   on: () => serverStub,
   off: () => serverStub,
   destroy: () => {},

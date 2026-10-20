@@ -83,7 +83,8 @@ export function siteMatches(entries: string[], origin: string): boolean {
   });
 }
 
-function rulesMatch(r: SuggestionRules | undefined, ctx: VisitContext): boolean {
+/** A suggestion's or walkthrough offer's rules: site, pages, signed in, traits and device. */
+export function rulesMatch(r: SuggestionRules | undefined, ctx: VisitContext): boolean {
   if (!r) return true;
   if (r.sites?.length && !(ctx.origin && siteMatches(r.sites, ctx.origin))) return false;
   return matchesTargeting({ pages: r.pages, audience: r.audience, attributes: r.attributes, devices: r.devices }, ctx);

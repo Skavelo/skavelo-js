@@ -4,6 +4,9 @@ import type { SessionStore } from '../core/session';
 
 export interface StepView {
   instruction: string;
+  /** The step's own heading and explanation, when it has them. A link to another page has none. */
+  heading?: string;
+  details?: string;
   stepIndex: number;
   total: number;
   /** Null when no locator matched well enough; the step is still shown, just not highlighted. */
@@ -89,6 +92,8 @@ export class ShowMode {
 
     return {
       instruction: step.instruction,
+      ...(step.title ? { heading: step.title } : {}),
+      ...(step.details ? { details: step.details } : {}),
       stepIndex: this.stepIndex,
       total: this.payload.steps.length,
       el: found ? el : null,

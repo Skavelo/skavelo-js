@@ -115,11 +115,13 @@ Where the widget shows (pages, countries, signed in users, plans, devices, gradu
 |---|---|
 | `open()` / `close()` | Opens or closes the widget. |
 | `ask(question)` | Asks a question as if the user typed it. |
+| `startWorkflow(id, { intro })` | Plays a walkthrough by its id from the dashboard, without asking the AI, so it costs no conversation. An introduction with **Start** comes first unless `intro` is `false`. |
+| `event(name)` | Tells Skavelo something the user just did, like `event('project_created')`, so a walkthrough offer set for it can show. Nothing is sent or stored. |
 | `identify(user)` | Same as `Skavelo.identify`. |
 | `on(event, handler)` / `off(event, handler)` | Listens for widget events. |
 | `destroy()` | Removes the widget from the page. |
 
-Events: `open`, `close`, `answer`, `step`, `step_complete`, `walkthrough_complete`, `walkthrough_abandon`, `walkthrough_replay`, `do_approved`, `do_rejected`, `handoff`.
+Events: `open`, `close`, `answer`, `step`, `step_complete`, `walkthrough_start`, `walkthrough_complete`, `walkthrough_abandon`, `walkthrough_replay`, `offer`, `do_approved`, `do_rejected`, `handoff`.
 
 ## Security and privacy
 

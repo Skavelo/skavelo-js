@@ -333,9 +333,17 @@ const WIDGET_CSS = `
 
   /* Walkthrough */
   .sk-step { padding: 18px 20px 4px; }
+  .sk-step-heading { margin-bottom: 4px; font-size: 15px; font-weight: 600; line-height: 1.4; }
   .sk-step-text { font-size: 15px; line-height: 1.55; }
   .sk-step-text strong { font-weight: 600; }
+  .sk-step-details { margin-top: 6px; font-size: 13.5px; line-height: 1.5; color: var(--sk-text-2); }
   .sk-step-note { margin-top: 6px; font-size: 13px; color: var(--sk-text-3); }
+  /* Before a walkthrough nobody asked for: what it does, and a choice to start it. */
+  .sk-intro { padding: 18px 20px 14px; }
+  .sk-intro-name { font-size: 15px; font-weight: 600; line-height: 1.4; }
+  .sk-intro-text { margin-top: 6px; font-size: 14px; line-height: 1.5; color: var(--sk-text-2); }
+  .sk-intro-count { margin-top: 8px; font-size: 13px; color: var(--sk-text-3); }
+  .sk-intro-nav { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--sk-line); }
   .sk-step-nav {
     display: flex;
     align-items: center;
@@ -511,6 +519,9 @@ export interface WidgetEvents {
 export interface StepDisplay {
   title: string;
   instruction: string;
+  /** Optional heading and explanation the team or learning wrote for this step. */
+  heading?: string;
+  details?: string;
   stepIndex: number;
   total: number;
   found: boolean;
@@ -548,6 +559,8 @@ export class Widget {
   private bodyEl: HTMLDivElement;
   private messagesEl: HTMLDivElement;
   private stepEl: HTMLDivElement;
+  private introEl: HTMLDivElement;
+  private introDone: ((start: boolean) => void) | null = null;
   private askInput: HTMLInputElement;
   private askBtn: HTMLButtonElement;
   private thinkingEl: HTMLElement | null = null;
@@ -597,8 +610,19 @@ export class Widget {
         </div>
         <div class="sk-body">
           <div class="sk-messages" aria-live="polite"></div>
+          <div class="sk-intro" hidden>
+            <div class="sk-intro-name"></div>
+            <div class="sk-intro-text"></div>
+            <div class="sk-intro-count"></div>
+            <div class="sk-intro-nav">
+              <button class="sk-nav-btn sk-intro-later" type="button"><span>Not now</span></button>
+              <button class="sk-nav-btn sk-nav-btn--next sk-intro-start" type="button"><span>Start</span>${ICONS.arrowRight}</button>
+            </div>
+          </div>
           <div class="sk-step" hidden>
+            <div class="sk-step-heading" hidden></div>
             <div class="sk-step-text"></div>
+            <div class="sk-step-details" hidden></div>
             <div class="sk-step-note" hidden>This item isn't visible on the current page. It may be on another screen.</div>
             <div class="sk-step-nav">
               <span class="sk-stepmark" aria-hidden="true"></span>
@@ -626,6 +650,7 @@ export class Widget {
     this.bodyEl = $('.sk-body');
     this.messagesEl = $('.sk-messages');
     this.stepEl = $('.sk-step');
+    this.introEl = $('.sk-intro');
     this.askInput = $('.sk-ask input');
     this.askBtn = $('.sk-ask button');
 
@@ -662,6 +687,8 @@ export class Widget {
     });
     $('.sk-back').addEventListener('click', () => this.events.onStepBack());
     $('.sk-next').addEventListener('click', () => this.events.onStepNext());
+    $('.sk-intro-start').addEventListener('click', () => this.answerIntro(true));
+    $('.sk-intro-later').addEventListener('click', () => this.answerIntro(false));
     // Pointing at a suggestion, focusing the input or typing usually comes seconds before a question.
     for (const type of ['pointerenter', 'focusin', 'input'] as const) {
       this.dock.addEventListener(type, () => this.events.onIntent?.(), { passive: true });
@@ -687,6 +714,8 @@ export class Widget {
   }
 
   private setView(view: View) {
+    // Closing the panel during an introduction counts as Not now.
+    if (view !== 'panel' && this.introDone) this.answerIntro(false);
     this.view = view;
     this.pill.hidden = view !== 'pill';
     this.composer.hidden = view !== 'composer';
@@ -737,6 +766,11 @@ export class Widget {
     this.nudgeTimer = window.setTimeout(() => this.clearNudge(), 25_000);
     this.renderSuggestions();
     return true;
+  }
+
+  /** An offer is showing over the launcher right now. */
+  get nudging(): boolean {
+    return !!this.nudgeItem;
   }
 
   private clearNudge() {
@@ -1147,7 +1181,14 @@ export class Widget {
     this.messagesEl.hidden = true;
     this.stepEl.hidden = false;
 
+    this.introEl.hidden = true;
+    const heading = this.stepEl.querySelector('.sk-step-heading') as HTMLElement;
+    heading.textContent = step.heading ?? '';
+    heading.hidden = !step.heading;
     (this.stepEl.querySelector('.sk-step-text') as HTMLElement).innerHTML = renderText(step.instruction);
+    const details = this.stepEl.querySelector('.sk-step-details') as HTMLElement;
+    details.innerHTML = step.details ? renderText(step.details) : '';
+    details.hidden = !step.details;
     (this.stepEl.querySelector('.sk-step-note') as HTMLElement).hidden = step.found;
     (this.stepEl.querySelector('.sk-count') as HTMLElement).textContent = `${step.stepIndex + 1} of ${step.total}`;
     (this.stepEl.querySelector('.sk-back') as HTMLButtonElement).disabled = step.stepIndex === 0;
@@ -1161,9 +1202,42 @@ export class Widget {
     this.showMessages();
   }
 
+  /**
+   * Introduces a walkthrough the visitor didn't ask for (started from code or offered): its name,
+   * what it does and how many steps, with Start and Not now. done(true) means Start.
+   */
+  showIntro(intro: { name: string; description?: string; total: number }, done: (start: boolean) => void) {
+    this.introDone?.(false);
+    this.introDone = done;
+    this.titleEl.textContent = 'Walkthrough';
+    (this.introEl.querySelector('.sk-intro-name') as HTMLElement).textContent = intro.name;
+    const text = this.introEl.querySelector('.sk-intro-text') as HTMLElement;
+    text.textContent = intro.description ?? '';
+    text.hidden = !intro.description;
+    (this.introEl.querySelector('.sk-intro-count') as HTMLElement).textContent =
+      intro.total === 1 ? '1 step' : `${intro.total} steps`;
+    this.messagesEl.hidden = true;
+    this.stepEl.hidden = true;
+    this.introEl.hidden = false;
+    if (this.view !== 'panel') this.setView('panel');
+    (this.introEl.querySelector('.sk-intro-start') as HTMLButtonElement).focus({ preventScroll: true });
+  }
+
+  private answerIntro(start: boolean) {
+    const done = this.introDone;
+    this.introDone = null;
+    this.introEl.hidden = true;
+    if (!start) {
+      this.showMessages();
+      if (!this.hasConversation) this.setView('pill');
+    }
+    done?.(start);
+  }
+
   private showMessages() {
     this.titleEl.textContent = this.title;
     this.stepEl.hidden = true;
+    this.introEl.hidden = true;
     this.messagesEl.hidden = false;
   }
 

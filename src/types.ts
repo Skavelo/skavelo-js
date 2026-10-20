@@ -196,6 +196,8 @@ export interface ShowPayload {
   workflowId: string;
   /** Workflow name, shown as the walkthrough title. */
   name?: string;
+  /** One sentence on what the user will have done, for the introduction before it starts. */
+  description?: string;
   /** The visitor asked Skavelo to do it: the widget carries out the steps and stops on the last one. */
   fill?: boolean;
   steps: ShowStep[];
@@ -205,6 +207,9 @@ export interface ShowStep {
   id: string;
   order: number;
   instruction: string;
+  /** Optional heading and a sentence or two for someone new, written by learning or the team. */
+  title?: string;
+  details?: string;
   /** Selector hints from the product map, tried in order */
   locators: Locator[];
   pageUrlPattern?: string;
@@ -242,6 +247,11 @@ export interface LookPayload {
 export type SkavelEvent =
   | { type: "step"; stepIndex: number; stepInstruction: string; elementFound: boolean }
   | { type: "step_complete"; stepIndex: number }
+  /**
+   * A walkthrough began. source: "asked" (an answer), "code" (startWorkflow) or "offer" (a
+   * walkthrough offer the visitor accepted).
+   */
+  | { type: "walkthrough_start"; workflowId: string; source: "asked" | "code" | "offer" }
   | { type: "walkthrough_complete"; workflowId: string }
   | { type: "walkthrough_abandon"; workflowId: string; atStep: number }
   /** The visitor chose to go through a finished walkthrough again, from step 1. */
@@ -251,6 +261,8 @@ export type SkavelEvent =
   | { type: "do_rejected"; skillId: string }
   /** Skavelo read the visitor's data with a lookup; ok is false when the app refused or failed. */
   | { type: "lookup"; skillId: string; ok: boolean }
+  /** A walkthrough offer was shown, accepted (they clicked it) or dismissed (Not now). */
+  | { type: "offer"; offerId: string; workflowId: string; action: "shown" | "accepted" | "dismissed" }
   /** Skavelo offered help because the visitor seemed stuck; accepted is set once they choose. */
   | { type: "stuck"; kind: "disabled" | "error" | "repeat"; question: string; accepted?: boolean }
   | {
@@ -298,6 +310,23 @@ export interface RemoteConfig {
   handoff?: HandoffConfig;
   /** Offer help when the visitor seems stuck. Missing means on. */
   stuckHelp?: boolean;
+  /** Walkthroughs offered before anyone asks. Older servers don't send it. */
+  offers?: WalkthroughOffer[];
+}
+
+/**
+ * A walkthrough Skavelo offers on its own: a card with the message, leading only to the
+ * walkthrough. Shown once per visitor; Not now means not again.
+ */
+export interface WalkthroughOffer {
+  id: string;
+  workflowId: string;
+  message: string;
+  /** On a page the rules allow, or when your code calls skavelo.event(name). */
+  trigger: { kind: 'page' } | { kind: 'event'; name: string };
+  rules: SuggestionRules;
+  /** Seconds after the page settles before it shows. */
+  delaySeconds: number;
 }
 
 export interface Targeting {

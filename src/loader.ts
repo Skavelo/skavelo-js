@@ -20,7 +20,7 @@ interface Api {
   identify(user: unknown): void;
 }
 
-const METHODS = ['identify', 'open', 'close', 'ask', 'on', 'off', 'destroy'];
+const METHODS = ['identify', 'open', 'close', 'ask', 'startWorkflow', 'event', 'on', 'off', 'destroy'];
 const w = window as unknown as { Skavelo?: Api & { __loader?: true } };
 
 if (!w.Skavelo) {
