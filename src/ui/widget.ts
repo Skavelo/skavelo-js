@@ -5,7 +5,7 @@ const FONT = `'Instrument Sans', ui-sans-serif, system-ui, -apple-system, 'Segoe
 const WIDGET_CSS = `
   :host { all: initial; }
 
-  .sk-dock {
+  .sk-dock, .sk-callout {
     --sk-surface: #FFFFFF;
     --sk-subtle: #F4F4F5;
     --sk-line: #E4E4E7;
@@ -15,16 +15,18 @@ const WIDGET_CSS = `
     --sk-shadow: 0 1px 2px rgba(24,24,27,.06), 0 12px 32px rgba(24,24,27,.14), 0 32px 64px -12px rgba(24,24,27,.20);
     /* The button and floating suggestions sit straight on the page, so they need a firmer lift than the panel. */
     --sk-float: 0 0 0 1px rgba(24,24,27,.04), 0 2px 6px rgba(24,24,27,.08), 0 0 40px rgba(24,24,27,.12), 0 24px 56px -10px rgba(24,24,27,.24);
+    font-family: ${FONT};
+    color: var(--sk-text);
+    -webkit-font-smoothing: antialiased;
+  }
+  .sk-dock {
     position: fixed;
     z-index: 2147483645;
     display: flex;
     flex-direction: column;
     pointer-events: none;
-    font-family: ${FONT};
-    color: var(--sk-text);
-    -webkit-font-smoothing: antialiased;
   }
-  .sk-dock *, .sk-dock *::before, .sk-dock *::after { box-sizing: border-box; }
+  .sk-dock *, .sk-dock *::before, .sk-dock *::after, .sk-callout, .sk-callout * { box-sizing: border-box; }
   .sk-dock > * { pointer-events: auto; }
   .sk-dock [hidden], .sk-dock[hidden] { display: none !important; }
   .sk-pos-center { left: 50%; transform: translateX(-50%); align-items: center; }
@@ -337,7 +339,11 @@ const WIDGET_CSS = `
   .sk-step-text { font-size: 15px; line-height: 1.55; }
   .sk-step-text strong { font-weight: 600; }
   .sk-step-details { margin-top: 6px; font-size: 13.5px; line-height: 1.5; color: var(--sk-text-2); }
-  .sk-step-note { margin-top: 6px; font-size: 13px; color: var(--sk-text-3); }
+  .sk-step-note { margin-top: 10px; padding: 10px 12px; border-radius: 10px; background: var(--sk-subtle); font-size: 13.5px; line-height: 1.5; color: var(--sk-text-2); }
+  .sk-note-text strong { font-weight: 600; color: var(--sk-text); }
+  .sk-note-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+  .sk-note-btn { padding: 5px 10px; border: 1px solid var(--sk-line); border-radius: 8px; background: var(--sk-surface); font-size: 13px; color: var(--sk-text); }
+  .sk-note-btn:hover { border-color: color-mix(in srgb, var(--sk-text) 25%, var(--sk-line)); }
   /* Before a walkthrough nobody asked for: what it does, and a choice to start it. */
   .sk-intro { padding: 18px 20px 14px; }
   .sk-intro-name { font-size: 15px; font-weight: 600; line-height: 1.4; }
@@ -376,6 +382,60 @@ const WIDGET_CSS = `
   .sk-nav-btn:disabled { opacity: .35; cursor: default; }
   .sk-nav-btn--next { color: var(--sk-text); font-weight: 500; }
 
+  /* Callout: the step beside the control it points at, like a tour guide standing next to it. */
+  .sk-callout {
+    position: fixed;
+    top: 0;
+    left: 0;
+    z-index: 2147483645;
+    width: min(340px, calc(100vw - 24px));
+    padding: 14px 14px 4px 16px;
+    border: 1px solid var(--sk-line);
+    border-radius: 14px;
+    background: var(--sk-surface);
+    box-shadow: var(--sk-float);
+    /* The host lets clicks through to the page; the card itself must take them. */
+    pointer-events: auto;
+    animation: sk-in 200ms cubic-bezier(.2,.8,.2,1);
+  }
+  .sk-callout[hidden] { display: none; }
+  .sk-co-close {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    display: grid;
+    place-items: center;
+    width: 26px;
+    height: 26px;
+    border-radius: 8px;
+    color: var(--sk-text-3);
+  }
+  .sk-co-close:hover { background: var(--sk-subtle); color: var(--sk-text); }
+  .sk-co-body > :first-child { padding-right: 26px; }
+  .sk-co-heading { margin-bottom: 4px; font-size: 14.5px; font-weight: 600; line-height: 1.4; }
+  .sk-co-text { font-size: 14px; line-height: 1.5; }
+  .sk-co-text p, .sk-co-details p { margin: 0; }
+  .sk-co-text strong { font-weight: 600; }
+  .sk-co-details { margin-top: 6px; font-size: 13px; line-height: 1.5; color: var(--sk-text-2); }
+  .sk-callout .sk-step-nav { gap: 2px; margin-top: 12px; padding: 8px 0 6px; }
+  .sk-callout .sk-count { font-size: 13px; }
+  .sk-callout .sk-nav-btn { padding: 5px 7px; font-size: 13.5px; }
+  .sk-co-ask { color: var(--sk-text-3); }
+  /* The notch on the side facing the control. A turned square: two of its borders form the point. */
+  .sk-co-arrow {
+    position: absolute;
+    width: 12px;
+    height: 12px;
+    margin: -6px 0 0 -6px;
+    border: 1px solid var(--sk-line);
+    background: var(--sk-surface);
+    transform: rotate(45deg);
+  }
+  .sk-co-arrow[data-side="top"] { top: 0; border-right-color: transparent; border-bottom-color: transparent; }
+  .sk-co-arrow[data-side="bottom"] { top: 100%; border-left-color: transparent; border-top-color: transparent; }
+  .sk-co-arrow[data-side="left"] { left: 0; border-top-color: transparent; border-right-color: transparent; }
+  .sk-co-arrow[data-side="right"] { left: 100%; border-bottom-color: transparent; border-left-color: transparent; }
+
   /* Follow-up input */
   .sk-ask {
     display: flex;
@@ -406,7 +466,7 @@ const WIDGET_CSS = `
   .sk-foot strong { font-weight: 600; color: var(--sk-text-2); }
   .sk-foot .sk-mark { color: var(--sk-text-2); }
 
-  .sk-dock.sk-dark {
+  .sk-dock.sk-dark, .sk-callout.sk-dark {
     --sk-surface: #1C1C1F;
     --sk-subtle: #27272A;
     --sk-line: #34343A;
@@ -417,7 +477,7 @@ const WIDGET_CSS = `
       --sk-float: 0 2px 6px rgba(0,0,0,.45), 0 0 40px rgba(0,0,0,.5), 0 24px 56px -10px rgba(0,0,0,.65);
   }
   @media (prefers-color-scheme: dark) {
-    .sk-dock:not(.sk-light) {
+    .sk-dock:not(.sk-light), .sk-callout:not(.sk-light) {
       --sk-surface: #1C1C1F;
       --sk-subtle: #27272A;
       --sk-line: #34343A;
@@ -434,7 +494,7 @@ const WIDGET_CSS = `
   .sk-preview .sk-panel { max-height: calc(100% - 24px); }
 
   @media (prefers-reduced-motion: reduce) {
-    .sk-dock *, .sk-dock *::before { animation: none !important; transition: none !important; }
+    .sk-dock *, .sk-dock *::before, .sk-callout { animation: none !important; transition: none !important; }
     .sk-l-route { stroke-dashoffset: 0; }
   }
 `;
@@ -503,6 +563,31 @@ function renderText(text: string): string {
     .join('');
 }
 
+/** **bold** and `code` only, for one line inside other text. */
+function renderInline(text: string): string {
+  return escapeHtml(text).replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>').replace(/`([^`]+)`/g, '<code>$1</code>');
+}
+
+const CONTROL_WORDS = 'field|button|tab|link|menu|option|box|checkbox|toggle|switch|dropdown|section|icon|card|list';
+
+/**
+ * What a step points at, from its instruction: "Enter your domain in the **Domain** field." gives
+ * "the **Domain** field", "Click **Add Domain**." gives "**Add Domain**". Null when nothing is named.
+ */
+export function missingName(instruction: string): string | null {
+  const m = instruction.match(new RegExp(`\\*\\*(.+?)\\*\\*(?:\\s+(${CONTROL_WORDS})\\b)?`, 'i'));
+  if (!m) return null;
+  return m[2] ? `the **${m[1]}** ${m[2].toLowerCase()}` : `**${m[1]}**`;
+}
+
+/** The question "Ask about it" fills in. */
+export function missingQuestion(instruction: string): string {
+  const what = missingName(instruction);
+  if (what) return `Where do I find ${what.replace(/\*\*/g, '')}?`;
+  const plain = instruction.replace(/\*\*/g, '').replace(/\.$/, '').trim();
+  return `I can't find where to do this: ${plain}. Where is it?`;
+}
+
 export interface WidgetEvents {
   /** suggestionId is set when the question came from a suggestion. */
   onAsk: (question: string, suggestionId?: string) => void;
@@ -525,7 +610,16 @@ export interface StepDisplay {
   stepIndex: number;
   total: number;
   found: boolean;
+  /** The control the step points at. The step then shows beside it, where there's room. */
+  anchor?: Element | null;
+  /** The control isn't there yet, and it's too soon to say it can't be found (the page may still be changing). */
+  pending?: boolean;
 }
+
+/** Below this width a callout would cover most of the screen, so steps stay in the panel. */
+const CALLOUT_MIN_VIEWPORT = 640;
+/** How long a missing control may stay missing (the page is changing) before the step moves to the panel. */
+const CALLOUT_GRACE_MS = 1200;
 
 export type View = 'pill' | 'composer' | 'panel';
 
@@ -573,6 +667,16 @@ export class Widget {
   private scheme: 'light' | 'dark' | null = null;
   private preview: boolean;
   private answerEls = new Map<string, HTMLElement>();
+  private callout: HTMLDivElement;
+  private calloutAnchor: Element | null = null;
+  private calloutFrame = 0;
+  private calloutKey = '';
+  private calloutGrace = 0;
+  /** The walkthrough step on screen, if any, and where it shows. */
+  private step: StepDisplay | null = null;
+  private stepPlace: 'callout' | 'panel' = 'panel';
+  /** The visitor opened the panel during this step, to ask something. It stays open until they move on. */
+  private stepInPanel = false;
 
   constructor(
     shadowRoot: ShadowRoot,
@@ -623,7 +727,13 @@ export class Widget {
             <div class="sk-step-heading" hidden></div>
             <div class="sk-step-text"></div>
             <div class="sk-step-details" hidden></div>
-            <div class="sk-step-note" hidden>This item isn't visible on the current page. It may be on another screen.</div>
+            <div class="sk-step-note" hidden>
+              <div class="sk-note-text"></div>
+              <div class="sk-note-actions">
+                <button class="sk-note-btn sk-note-back" type="button"></button>
+                <button class="sk-note-btn sk-note-ask" type="button">Ask about it</button>
+              </div>
+            </div>
             <div class="sk-step-nav">
               <span class="sk-stepmark" aria-hidden="true"></span>
               <span class="sk-count"></span>
@@ -686,6 +796,12 @@ export class Widget {
       (e.currentTarget as HTMLElement).setAttribute('aria-pressed', String(expanded));
     });
     $('.sk-back').addEventListener('click', () => this.events.onStepBack());
+    $('.sk-note-back').addEventListener('click', () => this.events.onStepBack());
+    $('.sk-note-ask').addEventListener('click', () => {
+      // Filled in, not sent: the visitor can add what they see before asking.
+      if (this.step) this.askInput.value = missingQuestion(this.step.instruction);
+      this.askInput.focus();
+    });
     $('.sk-next').addEventListener('click', () => this.events.onStepNext());
     $('.sk-intro-start').addEventListener('click', () => this.answerIntro(true));
     $('.sk-intro-later').addEventListener('click', () => this.answerIntro(false));
@@ -698,22 +814,69 @@ export class Widget {
     });
 
     shadowRoot.appendChild(this.dock);
+
+    // Outside the dock: a centred dock is shifted with a transform, which would carry a fixed child with it.
+    this.callout = document.createElement('div');
+    this.callout.className = 'sk-callout';
+    this.callout.setAttribute('role', 'dialog');
+    this.callout.hidden = true;
+    this.callout.innerHTML = `
+      <span class="sk-co-arrow" aria-hidden="true"></span>
+      <button class="sk-co-close" type="button" aria-label="End walkthrough">${ICONS.closeSmall}</button>
+      <div class="sk-co-body" aria-live="polite">
+        <div class="sk-co-heading" hidden></div>
+        <div class="sk-co-text"></div>
+        <div class="sk-co-details" hidden></div>
+      </div>
+      <div class="sk-step-nav">
+        <span class="sk-stepmark" aria-hidden="true"></span>
+        <span class="sk-count"></span>
+        <button class="sk-nav-btn sk-co-ask" type="button" aria-label="Ask a question about this step">Ask</button>
+        <button class="sk-nav-btn sk-co-back" type="button">${ICONS.arrowLeft}<span>Back</span></button>
+        <button class="sk-nav-btn sk-nav-btn--next sk-co-next" type="button"><span>Next</span>${ICONS.arrowRight}</button>
+      </div>
+    `;
+    const co = <T extends Element>(sel: string) => this.callout.querySelector(sel) as T;
+    co('.sk-co-close').addEventListener('click', () => this.endFromCallout());
+    co('.sk-co-ask').addEventListener('click', () => this.open());
+    co('.sk-co-back').addEventListener('click', () => this.events.onStepBack());
+    co('.sk-co-next').addEventListener('click', () => this.events.onStepNext());
+    this.callout.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') this.endFromCallout();
+    });
+    shadowRoot.appendChild(this.callout);
+    this.applyTheme(this.theme);
   }
 
   // ─── Views ────────────────────────────────────────────────────────────────
 
   open() {
+    // During a walkthrough the panel brings the step back with the question box; the walkthrough stays put.
+    if (this.step && this.stepPlace === 'callout') {
+      this.stepInPanel = true;
+      this.placeStep('panel');
+      this.events.onOpen();
+      return;
+    }
     this.setView(this.hasConversation ? 'panel' : 'composer');
     this.events.onOpen();
   }
 
   close() {
     if (this.view === 'pill') return;
+    // Opened to ask during a step: closing goes back to the callout rather than ending the walkthrough.
+    if (this.step && this.stepInPanel) {
+      this.stepInPanel = false;
+      if (this.calloutFor(this.step)) {
+        this.placeStep('callout');
+        return;
+      }
+    }
     this.setView('pill');
     this.events.onClose();
   }
 
-  private setView(view: View) {
+  private setView(view: View, focus = true) {
     // Closing the panel during an introduction counts as Not now.
     if (view !== 'panel' && this.introDone) this.answerIntro(false);
     this.view = view;
@@ -724,7 +887,7 @@ export class Widget {
     if (view !== 'pill') { this.nudgeItem = null; clearTimeout(this.nudgeTimer); }
     this.renderSuggestions();
     // A preview inside the dashboard must never pull focus away from the settings form.
-    if (this.preview) return;
+    if (this.preview || !focus) return;
     if (view === 'composer') this.composerInput.focus();
     if (view === 'panel') this.askInput.focus();
     if (view === 'pill') this.pill.focus({ preventScroll: true });
@@ -854,6 +1017,8 @@ export class Widget {
   /** Hides the whole widget, for pages or visitors its targeting rules leave out. */
   setHidden(hidden: boolean) {
     this.dock.hidden = hidden;
+    if (hidden) this.hideCallout();
+    else if (this.step && this.stepPlace === 'callout') this.placeStep('callout');
   }
 
   /** Shows a question as asked and puts the panel in its loading state. */
@@ -1189,17 +1354,147 @@ export class Widget {
     const details = this.stepEl.querySelector('.sk-step-details') as HTMLElement;
     details.innerHTML = step.details ? renderText(step.details) : '';
     details.hidden = !step.details;
-    (this.stepEl.querySelector('.sk-step-note') as HTMLElement).hidden = step.found;
+    // Nothing to point at, here or through an earlier step: say so, and offer a way forward.
+    const note = this.stepEl.querySelector('.sk-step-note') as HTMLElement;
+    note.hidden = step.found || !!step.pending;
+    if (!step.found) {
+      const what = missingName(step.instruction);
+      (note.querySelector('.sk-note-text') as HTMLElement).innerHTML =
+        what ? `I can't find ${renderInline(what)} on this screen.` : "I can't find where this step happens on this screen.";
+      const back = note.querySelector('.sk-note-back') as HTMLButtonElement;
+      back.hidden = step.stepIndex === 0;
+      back.textContent = `Back to step ${step.stepIndex}`;
+    }
     (this.stepEl.querySelector('.sk-count') as HTMLElement).textContent = `${step.stepIndex + 1} of ${step.total}`;
     (this.stepEl.querySelector('.sk-back') as HTMLButtonElement).disabled = step.stepIndex === 0;
     (this.stepEl.querySelector('.sk-next span') as HTMLElement).textContent =
       step.stepIndex + 1 === step.total ? 'Done' : 'Next';
 
-    if (this.view !== 'panel') this.setView('panel');
+    // A new step goes back beside its control, even if the visitor had the panel open to ask.
+    if (step.stepIndex !== this.step?.stepIndex) this.stepInPanel = false;
+    this.step = step;
+    this.fillCallout(step);
+
+    if (this.calloutFor(step)) {
+      clearTimeout(this.calloutGrace);
+      this.calloutGrace = 0;
+      this.placeStep('callout');
+    } else if (step.pending && !this.stepInPanel && this.calloutFits()) {
+      // Too soon to tell: keep whatever is showing, without pointing anywhere.
+      this.callout.style.visibility = 'hidden';
+    } else if (this.stepPlace === 'callout' && !this.stepInPanel && this.calloutFits()) {
+      // The control is gone for a moment while the page changes. Wait before moving to the panel,
+      // so the panel doesn't flash open between two steps.
+      this.callout.style.visibility = 'hidden';
+      this.calloutGrace ||= window.setTimeout(() => {
+        this.calloutGrace = 0;
+        if (this.step && !this.calloutFor(this.step)) this.placeStep('panel');
+      }, CALLOUT_GRACE_MS);
+    } else {
+      this.placeStep('panel');
+    }
   }
 
   clearStep() {
+    this.step = null;
+    this.stepInPanel = false;
+    this.stepPlace = 'panel';
+    clearTimeout(this.calloutGrace);
+    this.calloutGrace = 0;
+    this.hideCallout();
     this.showMessages();
+  }
+
+  /** The step shows beside its control: the control is on the page, and the screen is wide enough. */
+  private calloutFor(step: StepDisplay): boolean {
+    return !!step.anchor?.isConnected && !this.stepInPanel && this.calloutFits();
+  }
+
+  private calloutFits(): boolean {
+    return !this.preview && window.innerWidth >= CALLOUT_MIN_VIEWPORT;
+  }
+
+  private placeStep(place: 'callout' | 'panel') {
+    this.stepPlace = place;
+    if (place === 'callout' && this.step?.anchor) {
+      this.showCallout(this.step.anchor);
+      // Down to the launcher, without taking focus from the page the visitor is working in.
+      if (this.view !== 'pill') this.setView('pill', false);
+    } else {
+      this.hideCallout();
+      if (this.view !== 'panel') this.setView('panel', this.stepInPanel);
+    }
+  }
+
+  private fillCallout(step: StepDisplay) {
+    const co = <T extends Element>(sel: string) => this.callout.querySelector(sel) as T;
+    this.callout.setAttribute('aria-label', step.title);
+    const heading = co<HTMLElement>('.sk-co-heading');
+    heading.textContent = step.heading ?? '';
+    heading.hidden = !step.heading;
+    const text = renderText(step.instruction);
+    // Redrawn on every page change; rewriting the same text would interrupt screen readers.
+    if (co<HTMLElement>('.sk-co-text').innerHTML !== text) co<HTMLElement>('.sk-co-text').innerHTML = text;
+    const details = co<HTMLElement>('.sk-co-details');
+    const detailsHtml = step.details ? renderText(step.details) : '';
+    if (details.innerHTML !== detailsHtml) details.innerHTML = detailsHtml;
+    details.hidden = !step.details;
+    co<HTMLElement>('.sk-count').textContent = `${step.stepIndex + 1} of ${step.total}`;
+    co<HTMLButtonElement>('.sk-co-back').disabled = step.stepIndex === 0;
+    co<HTMLElement>('.sk-co-next span').textContent = step.stepIndex + 1 === step.total ? 'Done' : 'Next';
+  }
+
+  private showCallout(anchor: Element) {
+    this.callout.style.visibility = '';
+    if (this.calloutAnchor === anchor && !this.callout.hidden) return;
+    this.calloutAnchor = anchor;
+    this.calloutKey = '';
+    this.callout.hidden = false;
+    cancelAnimationFrame(this.calloutFrame);
+    // Follows the control every frame, like the highlight, so it moves with scrolling and with
+    // controls that slide or grow into place.
+    const follow = () => {
+      this.positionCallout();
+      this.calloutFrame = requestAnimationFrame(follow);
+    };
+    follow();
+  }
+
+  private hideCallout() {
+    cancelAnimationFrame(this.calloutFrame);
+    this.calloutAnchor = null;
+    this.callout.hidden = true;
+  }
+
+  /** The cross or Escape on the callout ends the walkthrough, as closing the panel does. */
+  private endFromCallout() {
+    this.hideCallout();
+    this.events.onClose();
+  }
+
+  private positionCallout() {
+    const anchor = this.calloutAnchor;
+    if (!anchor) return;
+    const a = anchor.getBoundingClientRect();
+    const vw = document.documentElement.clientWidth || window.innerWidth;
+    const vh = document.documentElement.clientHeight || window.innerHeight;
+    const w = this.callout.offsetWidth;
+    const h = this.callout.offsetHeight;
+    const key = [a.top, a.left, a.width, a.height, w, h, vw, vh].map(Math.round).join('|');
+    if (key === this.calloutKey) return;
+    this.calloutKey = key;
+
+    const place = calloutPlacement(a, { w, h }, { vw, vh }, this.dock.getBoundingClientRect());
+    this.callout.style.top = `${Math.round(place.top)}px`;
+    this.callout.style.left = `${Math.round(place.left)}px`;
+    const arrow = this.callout.querySelector('.sk-co-arrow') as HTMLElement;
+    arrow.hidden = !place.side;
+    if (place.side) {
+      arrow.dataset.side = place.side;
+      const vertical = place.side === 'top' || place.side === 'bottom';
+      arrow.style.left = vertical ? `${place.arrow}px` : '';
+      arrow.style.top = vertical ? '' : `${place.arrow}px`;
+    }
   }
 
   /**
@@ -1275,6 +1570,14 @@ export class Widget {
       d.style.setProperty('--sk-text-3', `color-mix(in srgb, ${fg} 50%, ${surface})`);
     }
     d.style.setProperty('--sk-accent', theme.accent ?? (this.looksDark() ? DEFAULT_ACCENT.dark : DEFAULT_ACCENT.light));
+    // The callout sits outside the dock, so it takes the same colours explicitly.
+    if (this.callout) {
+      [...vars, '--sk-accent'].forEach((v) => {
+        const value = d.style.getPropertyValue(v);
+        if (value) this.callout.style.setProperty(v, value);
+        else this.callout.style.removeProperty(v);
+      });
+    }
 
     this.icon = theme.icon || undefined;
     d.querySelectorAll('.sk-brand').forEach((el) => { el.innerHTML = this.brandIcon(20); });
@@ -1287,8 +1590,10 @@ export class Widget {
   /** Forces light or dark (dashboard preview); null follows the visitor's system setting. */
   setScheme(scheme: 'light' | 'dark' | null) {
     this.scheme = scheme;
-    this.dock.classList.toggle('sk-light', scheme === 'light');
-    this.dock.classList.toggle('sk-dark', scheme === 'dark');
+    for (const el of [this.dock, this.callout]) {
+      el.classList.toggle('sk-light', scheme === 'light');
+      el.classList.toggle('sk-dark', scheme === 'dark');
+    }
     this.applyTheme(this.theme);
   }
 
@@ -1297,9 +1602,9 @@ export class Widget {
     this.dock.style.visibility = ready ? '' : 'hidden';
   }
 
-  showView(view: View) {
+  showView(view: View, focus = true) {
     if (view === 'panel') this.hasConversation = true;
-    this.setView(view);
+    this.setView(view, focus);
   }
 
   private looksDark(): boolean {
@@ -1310,6 +1615,53 @@ export class Widget {
 
   destroy() {
     clearTimeout(this.floatTimer);
+    clearTimeout(this.calloutGrace);
+    this.hideCallout();
     this.dock.remove();
+    this.callout.remove();
   }
+}
+
+type Side = 'top' | 'bottom' | 'left' | 'right';
+
+/**
+ * Where the callout goes for a control: below it, else above, else to its right or left, keeping
+ * clear of the screen edges and of the widget's launcher. side is the callout edge facing the
+ * control (where the notch goes), and arrow is the notch's offset along that edge. With no room
+ * anywhere it sits below the control, kept on screen, without a notch.
+ */
+export function calloutPlacement(
+  a: { top: number; left: number; right: number; bottom: number; width: number; height: number },
+  size: { w: number; h: number },
+  view: { vw: number; vh: number },
+  avoid?: { top: number; left: number; right: number; bottom: number; width: number; height: number },
+): { top: number; left: number; side: Side | null; arrow: number } {
+  const GAP = 16;
+  const EDGE = 12;
+  const { w, h } = size;
+  const { vw, vh } = view;
+  const clamp = (v: number, min: number, max: number) => Math.min(Math.max(v, min), Math.max(min, max));
+  const x = clamp(a.left + a.width / 2 - w / 2, EDGE, vw - w - EDGE);
+  const y = clamp(a.top + a.height / 2 - h / 2, EDGE, vh - h - EDGE);
+  const along = (start: number, centre: number, length: number) => clamp(centre - start, 18, length - 18);
+
+  // A control with no size (inside a closed menu) has nowhere to point: wait above the launcher.
+  if (!a.width && !a.height) {
+    const top = avoid?.height ? avoid.top - h - EDGE : vh - h - EDGE;
+    return { top: clamp(top, EDGE, vh - h - EDGE), left: clamp((vw - w) / 2, EDGE, vw - w - EDGE), side: null, arrow: 0 };
+  }
+
+  const options: { top: number; left: number; side: Side; arrow: number }[] = [
+    { top: a.bottom + GAP, left: x, side: 'top', arrow: along(x, a.left + a.width / 2, w) },
+    { top: a.top - GAP - h, left: x, side: 'bottom', arrow: along(x, a.left + a.width / 2, w) },
+    { top: y, left: a.right + GAP, side: 'left', arrow: along(y, a.top + a.height / 2, h) },
+    { top: y, left: a.left - GAP - w, side: 'right', arrow: along(y, a.top + a.height / 2, h) },
+  ];
+  const onScreen = (o: { top: number; left: number }) =>
+    o.top >= EDGE && o.top + h <= vh - EDGE && o.left >= EDGE && o.left + w <= vw - EDGE;
+  const clear = (o: { top: number; left: number }) =>
+    !avoid?.width || o.left + w <= avoid.left || o.left >= avoid.right || o.top + h <= avoid.top || o.top >= avoid.bottom;
+  const pick = options.find((o) => onScreen(o) && clear(o)) ?? options.find(onScreen);
+  if (pick) return pick;
+  return { top: clamp(a.bottom + GAP, EDGE, vh - h - EDGE), left: x, side: null, arrow: 0 };
 }

@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { alreadyHere, onPage, ShowMode } from './show';
 import type { SessionStore } from '../core/session';
 import type { ShowStep } from '../types';
@@ -65,5 +65,66 @@ describe('ShowMode.resolve', () => {
     history.replaceState(null, '', '/audience');
     const view = new ShowMode({ workflowId: 'w', steps: [onAutomations(step('link', 'Automations'))] }, session, () => {}).resolve();
     expect(view?.el?.textContent).toBe('Automations');
+  });
+});
+
+describe('ShowMode.resolve: a control behind an earlier step', () => {
+  const session = { setWalkthrough: () => {} } as unknown as SessionStore;
+  // Step 2 opens a window; step 3's field is inside it. The window isn't open.
+  const domain: ShowStep[] = [
+    { ...step('button', 'Journey actions'), pageUrlPattern: '/settings' },
+    { id: 'add', order: 1, instruction: 'Click **Add Domain**.', pageUrlPattern: '/settings', locators: [{ type: 'testid', value: 'add-domain', score: 0.9 }] },
+    { id: 'field', order: 2, title: 'Enter your domain', instruction: 'Enter your domain in the **Domain** field.', pageUrlPattern: '/settings', locators: [{ type: 'testid', value: 'domain-field', score: 0.9 }] },
+  ];
+  beforeEach(() => {
+    history.replaceState(null, '', '/settings');
+    document.body.insertAdjacentHTML('beforeend', '<button data-testid="add-domain">Add Domain</button>');
+  });
+
+  it('points at the nearest earlier control that leads there, once the step has had a moment', () => {
+    vi.useFakeTimers();
+    try {
+      const mode = new ShowMode({ workflowId: 'w', steps: domain }, session, () => {}, { startAt: 2 });
+      // Straight after reaching the step the window may still be opening: no pointing back yet.
+      expect(mode.resolve()?.el).toBeNull();
+      expect(mode.msUntilLead()).toBeGreaterThan(0);
+      vi.advanceTimersByTime(1100);
+      const view = mode.resolve();
+      expect(view?.el?.getAttribute('data-testid')).toBe('add-domain');
+      expect(view?.lead).toBe(true);
+      expect(view?.bridge).toBe(true);
+      expect(view?.stepIndex).toBe(2);
+      expect(view?.heading).toBe('Enter your domain');
+      expect(view?.instruction).toBe('First, click **Add Domain**.');
+      expect(view?.details).toBe('Then enter your domain in the **Domain** field.');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('moves to the control itself once it appears', () => {
+    vi.useFakeTimers();
+    try {
+      const mode = new ShowMode({ workflowId: 'w', steps: domain }, session, () => {}, { startAt: 2 });
+      vi.advanceTimersByTime(1100);
+      document.body.insertAdjacentHTML('beforeend', '<input data-testid="domain-field">');
+      const view = mode.resolve();
+      expect(view?.el?.getAttribute('data-testid')).toBe('domain-field');
+      expect(view?.lead).toBeUndefined();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('shows nothing to point at when no earlier control is on screen either', () => {
+    vi.useFakeTimers();
+    try {
+      document.querySelector('[data-testid="add-domain"]')?.remove();
+      const mode = new ShowMode({ workflowId: 'w', steps: domain.slice(1) }, session, () => {}, { startAt: 1 });
+      vi.advanceTimersByTime(1100);
+      expect(mode.resolve()?.el).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

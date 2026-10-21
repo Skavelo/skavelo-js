@@ -83,6 +83,7 @@ export class SkavelInstance {
   private lastDiagnosis: string | undefined;
   private remote: RemoteConfig | null = null;
   private stopWatchingUrl: () => void;
+  private leadTimer = 0;
   private bucket = visitorBucket();
 
   /** prefetched: settings already loaded (the one-snippet setup fetches every agent at once). */
@@ -654,6 +655,12 @@ export class SkavelInstance {
     } else {
       this.highlight.hide();
       this.unwatchTarget();
+      // The control may be behind something an earlier step opens; look again once the wait is over.
+      const wait = this.showMode.msUntilLead();
+      if (wait > 0) {
+        clearTimeout(this.leadTimer);
+        this.leadTimer = window.setTimeout(() => this.renderStep(), wait + 50);
+      }
     }
 
     const filling = !!this.showMode.payload.fill && !this.autoPaused;
@@ -666,6 +673,8 @@ export class SkavelInstance {
       stepIndex: view.stepIndex,
       total: view.total,
       found: !!view.el,
+      anchor: view.el,
+      pending: !view.el && this.showMode.msUntilLead() > 0,
     });
     if (filling && view.el) this.doStepFor(view.el, view.stepIndex, last);
   }
@@ -731,6 +740,8 @@ export class SkavelInstance {
     this.unwatchTarget();
     this.highlight.hide();
     this.widget.clearStep();
+    // The last step may have been beside its control with the panel down; the ending shows in the panel.
+    this.widget.showView('panel', false);
     // A replay ends on the message it was started from rather than adding another one.
     if (replayOf?.isConnected) {
       this.widget.revisit(replayOf);

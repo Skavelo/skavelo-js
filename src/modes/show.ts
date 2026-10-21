@@ -16,7 +16,19 @@ export interface StepView {
    * Settings. Following it doesn't finish the step: the step shows again on the page it opens.
    */
   bridge?: boolean;
+  /**
+   * The step's control isn't on screen, but an earlier step's is, like **Add Domain** for a field
+   * inside the window it opens. el is that earlier control; doing it leads back to this step.
+   */
+  lead?: boolean;
 }
+
+/**
+ * How long a step's control may be missing before an earlier step's control is offered instead.
+ * Right after a step is reached its control is often still on its way in (a window opening), and
+ * pointing back at the button just clicked would be wrong.
+ */
+export const LEAD_AFTER_MS = 1000;
 
 /**
  * Manages an active Show walkthrough. State lives in SessionStore so a walkthrough
@@ -27,6 +39,8 @@ export class ShowMode {
   private stepIndex: number;
   private session: SessionStore;
   private emit: (e: SkavelEvent) => void;
+  /** When the visitor reached the current step. */
+  private stepSince = Date.now();
 
   readonly messageId: string | undefined;
 
@@ -83,6 +97,22 @@ export class ShowMode {
       };
     }
 
+    // On the right page, but the control is behind something an earlier step opens.
+    const lead = !found && this.msUntilLead() === 0 ? this.wayIn() : null;
+    if (lead) {
+      this.emit({ type: 'step', stepIndex: this.stepIndex, stepInstruction: step.instruction, elementFound: true });
+      return {
+        instruction: `First, ${lowerFirst(lead.instruction)}`,
+        ...(step.title ? { heading: step.title } : {}),
+        details: `Then ${lowerFirst(step.instruction)}`,
+        stepIndex: this.stepIndex,
+        total: this.payload.steps.length,
+        el: lead.el,
+        bridge: true,
+        lead: true,
+      };
+    }
+
     this.emit({
       type: 'step',
       stepIndex: this.stepIndex,
@@ -100,6 +130,25 @@ export class ShowMode {
     };
   }
 
+  /** Milliseconds before a missing control may be led to through an earlier step; 0 once it may. */
+  msUntilLead(now = Date.now()): number {
+    return Math.max(0, this.stepSince + LEAD_AFTER_MS - now);
+  }
+
+  /** The nearest earlier step whose control is on screen here, and its instruction. */
+  private wayIn(): { el: Element; instruction: string } | null {
+    for (let i = this.stepIndex - 1; i >= 0; i--) {
+      const earlier = this.payload.steps[i];
+      const { el, score } = resolveLocator(earlier.locators);
+      if (!el || !isFreshEnough(score)) continue;
+      // A look-alike from another page doesn't count, except links and the top bar or sidebar.
+      const elsewhere = !!earlier.pageUrlPattern && !onPage(earlier.pageUrlPattern)
+        && !el.closest('a[href], nav, header, aside, [role="navigation"], [role="banner"]');
+      if (!elsewhere) return { el, instruction: earlier.instruction };
+    }
+    return null;
+  }
+
   /** Returns false when the walkthrough just finished. */
   advance(): boolean {
     this.emit({ type: 'step_complete', stepIndex: this.stepIndex });
@@ -109,6 +158,7 @@ export class ShowMode {
       return false;
     }
     this.stepIndex++;
+    this.stepSince = Date.now();
     this.persist();
     return true;
   }
@@ -116,6 +166,7 @@ export class ShowMode {
   back(): void {
     if (this.stepIndex === 0) return;
     this.stepIndex--;
+    this.stepSince = Date.now();
     this.persist();
   }
 
@@ -160,6 +211,11 @@ export function wayTo(pattern: string): { el: HTMLAnchorElement; label: string }
     if (!best || rank > best.rank) best = { el: a, label, rank };
   }
   return best && { el: best.el, label: best.label };
+}
+
+/** "Click **Add Domain**." becomes "click **Add Domain**.", leaving names like "API" alone. */
+function lowerFirst(text: string): string {
+  return /^[A-Z][a-z]/.test(text) ? text.charAt(0).toLowerCase() + text.slice(1) : text;
 }
 
 /** How many leading steps are links to the current page, e.g. "Click **Automations**" while on Automations. */
