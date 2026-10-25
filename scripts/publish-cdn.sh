@@ -29,3 +29,7 @@ put() {
 put "$VERSION/skavelo.js" "dist/skavelo.min.js" "public, max-age=31536000, immutable"
 put "skavelo.js" "dist/skavelo.js" "public, max-age=300, stale-while-revalidate=86400"
 echo "Published $VERSION to $BUCKET: skavelo.js now loads $VERSION/skavelo.js"
+# For customers who pin a version: the integrity value for <script integrity="..."> on $VERSION.
+echo "Integrity for $VERSION/skavelo.js: sha384-$(openssl dgst -sha384 -binary dist/skavelo.min.js | openssl base64 -A)"
+# Confirms the CDN now serves exactly these files.
+node scripts/check-cdn.mjs || true
