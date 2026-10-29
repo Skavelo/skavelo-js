@@ -94,6 +94,9 @@ Skavelo.init({
     accent: '#2F6BFF',
     position: 'bottom-right', // 'bottom-center' | 'bottom-right' | 'bottom-left'
     label: 'Get help',
+    launcher: 'label',       // 'label' | 'icon' (a round button with the icon alone)
+    size: 'md',              // 'sm' | 'md' | 'lg' | 'xl', or a height in pixels from 32 to 96
+    start: 'launcher',       // 'launcher' | 'input' (the question bar is open on page load)
     title: 'Acme Help',
     icon: 'https://acme.com/icon.png',
     offset: 24,

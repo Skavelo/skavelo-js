@@ -44,26 +44,37 @@ const WIDGET_CSS = `
 
   @keyframes sk-in { from { opacity: 0; transform: translateY(6px) scale(.98); } to { opacity: 1; transform: none; } }
 
-  /* Pill */
+  /* Pill. Everything scales with --sk-launch, the launcher height (52px at the default size). */
   .sk-pill {
+    --sk-launch: 52px;
     position: relative;
     isolation: isolate;
     display: inline-flex;
     align-items: center;
-    gap: 10px;
-    height: 52px;
-    padding: 0 18px 0 14px;
-    border-radius: 14px;
+    gap: calc(var(--sk-launch) * .19);
+    height: var(--sk-launch);
+    padding: 0 calc(var(--sk-launch) * .35) 0 calc(var(--sk-launch) * .27);
+    border-radius: calc(var(--sk-launch) * .27);
     border: 1px solid var(--sk-line);
     background: color-mix(in srgb, var(--sk-surface) 92%, transparent);
     backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
     box-shadow: var(--sk-float);
-    font-size: 15px;
+    font-size: clamp(13px, calc(var(--sk-launch) * .29), 19px);
     font-weight: 500;
     color: var(--sk-text-2);
     animation: sk-in 220ms cubic-bezier(.2,.8,.2,1);
     transition: transform 140ms cubic-bezier(.2,.8,.2,1), color 140ms ease;
+  }
+  /* Icon only: a circle. The text stays in the button, out of sight, as its name for screen readers. */
+  .sk-pill--icon { width: var(--sk-launch); padding: 0; justify-content: center; border-radius: 999px; }
+  .sk-pill--icon .sk-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
   }
   .sk-pill::before {
     content: '';
@@ -542,6 +553,16 @@ function isDark(hex: string): boolean {
 
 const DEFAULT_ACCENT = { light: '#A3224A', dark: '#E0456F' };
 
+const LAUNCHER_SIZES: Record<string, number> = { sm: 44, md: 52, lg: 60, xl: 68 };
+
+/** Launcher height in pixels from a preset or a number; dashboard settings arrive as strings like "64". */
+export function launcherHeight(size: ThemeCfg['size'] | string | undefined): number {
+  if (size === undefined || size === '') return LAUNCHER_SIZES.md;
+  if (typeof size === 'string' && size in LAUNCHER_SIZES) return LAUNCHER_SIZES[size];
+  const px = Number(size);
+  return Number.isFinite(px) ? Math.min(96, Math.max(32, Math.round(px))) : LAUNCHER_SIZES.md;
+}
+
 /** invoiceId → "Invoice id", for the action card. */
 function labelFor(key: string): string {
   const words = key.replace(/_/g, ' ').replace(/([a-z0-9])([A-Z])/g, '$1 $2').toLowerCase().trim();
@@ -659,6 +680,8 @@ export class Widget {
   private askBtn: HTMLButtonElement;
   private thinkingEl: HTMLElement | null = null;
   private view: View = 'pill';
+  /** The first view after the dashboard settings arrive has been chosen. */
+  private started = false;
   private loading = false;
   private hasConversation = false;
   private icon: string | undefined;
@@ -871,6 +894,10 @@ export class Widget {
         this.placeStep('callout');
         return;
       }
+    }
+    // Put away once, the question bar stops opening by itself for the rest of the visit.
+    if (this.view === 'composer' && this.theme.start === 'input') {
+      try { sessionStorage.setItem('_sk_input_off', '1'); } catch {}
     }
     this.setView('pill');
     this.events.onClose();
@@ -1581,6 +1608,12 @@ export class Widget {
 
     this.icon = theme.icon || undefined;
     d.querySelectorAll('.sk-brand').forEach((el) => { el.innerHTML = this.brandIcon(20); });
+    // The launcher's icon grows with it, and fills more of the button when it stands alone.
+    const height = launcherHeight(theme.size);
+    const iconOnly = theme.launcher === 'icon';
+    this.pill.style.setProperty('--sk-launch', `${height}px`);
+    this.pill.classList.toggle('sk-pill--icon', iconOnly);
+    this.pill.querySelector('.sk-brand')!.innerHTML = this.brandIcon(Math.round(height * (iconOnly ? .46 : .385)));
     (d.querySelector('.sk-label') as HTMLElement).textContent = theme.label || 'Get help';
     this.title = theme.title || 'Help';
     if (this.stepEl.hidden) this.titleEl.textContent = this.title;
@@ -1600,6 +1633,18 @@ export class Widget {
   /** Hides the widget until its dashboard settings arrive, so visitors don't see the default look flash. */
   setReady(ready: boolean) {
     this.dock.style.visibility = ready ? '' : 'hidden';
+    if (ready && !this.started) {
+      this.started = true;
+      this.showStart();
+    }
+  }
+
+  /** Opens the question bar on load when the theme starts with it, unless the visitor closed it this visit. */
+  private showStart() {
+    if (this.preview || this.theme.start !== 'input' || this.view !== 'pill' || this.step) return;
+    try { if (sessionStorage.getItem('_sk_input_off') === '1') return; } catch {}
+    // Not the visitor opening it, so no open event, and the page keeps its focus.
+    this.setView('composer', false);
   }
 
   showView(view: View, focus = true) {

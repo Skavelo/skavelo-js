@@ -76,6 +76,11 @@ export interface UserContext {
 /** How a walkthrough marks the element to click. */
 export type HighlightStyle = "beacon" | "spotlight" | "trace" | "ring";
 
+/** What the launcher shows: the icon and its text, or a round button with the icon alone. */
+export type LauncherStyle = "label" | "icon";
+/** Launcher size presets: sm 44px, md 52px, lg 60px, xl 68px tall. */
+export type LauncherSize = "sm" | "md" | "lg" | "xl";
+
 export interface ThemeCfg {
   /** Accent / highlight colour in hex. Defaults to the Skavelo claret. */
   accent?: string;
@@ -86,8 +91,17 @@ export interface ThemeCfg {
   highlight?: HighlightStyle;
   /** Widget position on screen. Default "bottom-center". */
   position?: "bottom-center" | "bottom-right" | "bottom-left";
-  /** Launcher text. Default "Get help". */
+  /** Launcher text. Default "Get help". With launcher "icon" it isn't shown, but screen readers still announce it. */
   label?: string;
+  /** What the launcher shows. Default "label": the icon and the launcher text. "icon" is a round button with the icon alone. */
+  launcher?: LauncherStyle;
+  /** Launcher size: a preset (default "md") or a height in pixels from 32 to 96. */
+  size?: LauncherSize | number;
+  /**
+   * What shows before the visitor opens anything. Default "launcher". "input" starts with the
+   * question bar open; once the visitor closes it, the launcher stays for the rest of their visit.
+   */
+  start?: "launcher" | "input";
   /** Image URL used instead of the Skavelo mark in the launcher, input bar and loading state. Square works best. */
   icon?: string;
   /** Header text in the chat panel. Defaults to the agent's name from the dashboard. */

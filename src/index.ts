@@ -3,7 +3,7 @@ import { SkavelInstance } from './skavelo';
 import { setPendingUser } from './core/pending-user';
 import { SiteRouter } from './site-router';
 
-export type { SkaveloCfg, UserContext, ThemeCfg, HighlightStyle, HandoffReason, ActionsCfg, SkavelEvent, EventHandler, AskResponse, ResponseMode, DoPayload, LookPayload, LookupResult } from './types';
+export type { SkaveloCfg, UserContext, ThemeCfg, HighlightStyle, LauncherStyle, LauncherSize, HandoffReason, ActionsCfg, SkavelEvent, EventHandler, AskResponse, ResponseMode, DoPayload, LookPayload, LookupResult } from './types';
 export { SkavelInstance, SiteRouter };
 
 /** What Skavelo.init returns: one agent, a router over a workspace's agents, or a no-op on the server. */
