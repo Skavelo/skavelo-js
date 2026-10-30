@@ -1,5 +1,7 @@
 import type { ShowPayload, ShowStep, SkavelEvent } from '../types';
-import { resolveLocator, isFreshEnough } from '../core/locator';
+import { resolveLocator, isFreshEnough, findHidden } from '../core/locator';
+import { menuButton, revealerOf, revealInstruction } from '../core/reveal';
+import { currentDevice } from '../core/targeting';
 import type { SessionStore } from '../core/session';
 
 export interface StepView {
@@ -41,6 +43,8 @@ export class ShowMode {
   private emit: (e: SkavelEvent) => void;
   /** When the visitor reached the current step. */
   private stepSince = Date.now();
+  /** The step during which the visitor opened the page's menu because a step pointed at it. */
+  private menuOpenedAt = -1;
 
   readonly messageId: string | undefined;
 
@@ -74,8 +78,10 @@ export class ShowMode {
   }
 
   resolve(): StepView | null {
-    const step = this.currentStep();
-    if (!step) return null;
+    const current = this.currentStep();
+    if (!current) return null;
+    // Steps are written on a computer; a phone has no sidebar on screen and is tapped.
+    const step = { ...current, instruction: forScreen(current.instruction) };
 
     const { el, score } = resolveLocator(step.locators);
     // A step from another page must not light up a look-alike here, like a contact's "Open menu"
@@ -97,6 +103,24 @@ export class ShowMode {
       };
     }
 
+    // The control, or a link to its page, is on the page but hidden, like a sidebar a phone
+    // layout keeps behind a menu button: point at the button that shows it.
+    // Waits like a lead: right after a step is reached, its control may still be on its way in.
+    const tucked = found || this.msUntilLead() > 0 ? null : this.hiddenTarget(step);
+    const reveal = tucked ? revealerOf(tucked) : null;
+    if (reveal) {
+      this.emit({ type: 'step', stepIndex: this.stepIndex, stepInstruction: step.instruction, elementFound: true });
+      return {
+        instruction: revealInstruction(reveal.label),
+        ...(step.title ? { heading: step.title } : {}),
+        details: `Then ${lowerFirst(step.instruction)}`,
+        stepIndex: this.stepIndex,
+        total: this.payload.steps.length,
+        el: reveal.el,
+        bridge: true,
+      };
+    }
+
     // On the right page, but the control is behind something an earlier step opens.
     const lead = !found && this.msUntilLead() === 0 ? this.wayIn() : null;
     if (lead) {
@@ -110,6 +134,27 @@ export class ShowMode {
         el: lead.el,
         bridge: true,
         lead: true,
+      };
+    }
+
+    // On a phone, a control that isn't anywhere yet is most often in a menu that adds its links
+    // only when it opens.
+    // Once they've opened it for this step, it isn't offered again: pressing it a second time would close it.
+    const menu = !found && this.msUntilLead() === 0 && this.menuOpenedAt !== this.stepIndex && currentDevice() === 'mobile'
+      ? menuButton()
+      : null;
+    if (menu) {
+      const at = this.stepIndex;
+      menu.el.addEventListener('click', () => { this.menuOpenedAt = at; }, { once: true });
+      this.emit({ type: 'step', stepIndex: this.stepIndex, stepInstruction: step.instruction, elementFound: true });
+      return {
+        instruction: revealInstruction(menu.label),
+        ...(step.title ? { heading: step.title } : {}),
+        details: `Then ${lowerFirst(step.instruction)}`,
+        stepIndex: this.stepIndex,
+        total: this.payload.steps.length,
+        el: menu.el,
+        bridge: true,
       };
     }
 
@@ -130,6 +175,12 @@ export class ShowMode {
     };
   }
 
+  /** The step's control hidden on this page, or, for a step on another page, a hidden link there. */
+  private hiddenTarget(step: ShowStep): Element | null {
+    if (step.pageUrlPattern && !onPage(step.pageUrlPattern)) return wayTo(step.pageUrlPattern, true)?.el ?? null;
+    return findHidden(step.locators);
+  }
+
   /** Milliseconds before a missing control may be led to through an earlier step; 0 once it may. */
   msUntilLead(now = Date.now()): number {
     return Math.max(0, this.stepSince + LEAD_AFTER_MS - now);
@@ -144,7 +195,7 @@ export class ShowMode {
       // A look-alike from another page doesn't count, except links and the top bar or sidebar.
       const elsewhere = !!earlier.pageUrlPattern && !onPage(earlier.pageUrlPattern)
         && !el.closest('a[href], nav, header, aside, [role="navigation"], [role="banner"]');
-      if (!elsewhere) return { el, instruction: earlier.instruction };
+      if (!elsewhere) return { el, instruction: forScreen(earlier.instruction) };
     }
     return null;
   }
@@ -187,8 +238,9 @@ export class ShowMode {
 /**
  * A visible link on this page to the page a step is on: one that goes there exactly, or else the
  * closest one above it, like /settings for a step on /settings/compliance. Null when there's none.
+ * With hidden, the same among links that are on the page but not showing.
  */
-export function wayTo(pattern: string): { el: HTMLAnchorElement; label: string } | null {
+export function wayTo(pattern: string, hidden = false): { el: HTMLAnchorElement; label: string } | null {
   const target = pattern.split('#')[0].replace(/\/+$/, '') || '/';
   let best: { el: HTMLAnchorElement; label: string; rank: number } | null = null;
   for (const a of Array.from(document.querySelectorAll<HTMLAnchorElement>('a[href]'))) {
@@ -204,13 +256,26 @@ export function wayTo(pattern: string): { el: HTMLAnchorElement; label: string }
     const above = !exact && path !== '/' && target.startsWith(`${path}/`);
     if (!exact && !above) continue;
     const r = a.getBoundingClientRect();
-    if (r.width === 0 || r.height === 0 || getComputedStyle(a).visibility === 'hidden') continue;
+    const showing = r.width > 0 && r.height > 0 && getComputedStyle(a).visibility !== 'hidden';
+    // hidden: only links that aren't showing, like the sidebar's on a phone, to find what opens them.
+    if (showing === hidden) continue;
     const label = (a.getAttribute('aria-label') || a.textContent || a.title || '').replace(/\s+/g, ' ').trim();
     if (!label) continue;
     const rank = exact ? 10_000 : path.length;
     if (!best || rank > best.rank) best = { el: a, label, rank };
   }
   return best && { el: best.el, label: best.label };
+}
+
+/**
+ * A step's words for a phone: "Click **Billing** in the sidebar." becomes "Tap **Billing**.", since
+ * the sidebar and top bar the step was written for are folded into a menu there. Unchanged elsewhere.
+ */
+export function forScreen(text: string, phone = currentDevice() === 'mobile'): string {
+  if (!phone) return text;
+  return text
+    .replace(/\s+(?:in|from|on|at) the (?:left |right |top )?(?:sidebar|side bar|side menu|top bar|navigation bar|nav bar)\b/gi, '')
+    .replace(/\b(c)lick(s|ing)?\b/gi, (_, c: string, end = '') => `${c === 'C' ? 'T' : 't'}ap${end === 'ing' ? 'ping' : end}`);
 }
 
 /** "Click **Add Domain**." becomes "click **Add Domain**.", leaving names like "API" alone. */

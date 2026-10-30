@@ -238,6 +238,8 @@ const WIDGET_CSS = `
   .sk-msg p { margin: 0 0 8px; }
   .sk-msg p:last-child { margin-bottom: 0; }
   .sk-msg strong { font-weight: 600; }
+  .sk-msg a { color: inherit; text-decoration: underline; text-decoration-color: var(--sk-accent); text-underline-offset: 2px; font-weight: 500; }
+  .sk-msg a:hover { text-decoration-thickness: 2px; }
   .sk-msg code { font-family: ui-monospace, monospace; font-size: .9em; background: var(--sk-subtle); padding: 1px 5px; border-radius: 4px; }
   .sk-msg--user {
     align-self: flex-end;
@@ -573,15 +575,60 @@ function escapeHtml(s: string): string {
   return s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!));
 }
 
-/** Minimal, escape-first markdown: paragraphs, line breaks, **bold**, `code`. */
-function renderText(text: string): string {
-  return escapeHtml(text.trim())
-    .split(/\n{2,}/)
-    .map((para) => `<p>${para
-      .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-      .replace(/`([^`]+)`/g, '<code>$1</code>')
-      .replace(/\n/g, '<br>')}</p>`)
-    .join('');
+/**
+ * Links in an answer: [Billing](/settings/billing), a full address, or a bare one on the same site
+ * as the page, like app.example.com on example.com. Anything else (a file name, "Node.js") stays text.
+ */
+const LINK =
+  /\[([^\]\n]+)\]\(((?:https?:\/\/|\/)[^\s)]*)\)|\b(https?:\/\/[^\s<>"'`]*[^\s<>"'`.,;:!?)])|\b((?:[a-z0-9-]+\.)+[a-z]{2,}(?:\/[^\s<>"'`]*[^\s<>"'`.,;:!?)])?)/gi;
+
+/** The link's address, or null when it isn't a web address or, written bare, isn't this site's. */
+function linkHref(raw: string, bare: boolean): URL | null {
+  try {
+    const url = new URL(bare ? `https://${raw}` : raw, location.origin);
+    if (url.protocol !== 'https:' && url.protocol !== 'http:') return null;
+    if (bare && siteOf(url.hostname) !== siteOf(location.hostname)) return null;
+    return url;
+  } catch {
+    return null;
+  }
+}
+
+// app.example.com and example.com are the same site; the last two labels are enough here.
+const siteOf = (host: string) => host.split('.').slice(-2).join('.');
+
+/**
+ * Turns links into placeholders before escaping, so an address is never mangled by the escaping or
+ * the bold and code rules, then puts them back as anchors. Pages on this site open in place;
+ * others open in a new tab.
+ */
+function withLinks(text: string, render: (plain: string) => string): string {
+  const anchors: string[] = [];
+  const marked = text.replace(LINK, (whole, label: string | undefined, md: string | undefined, full: string | undefined, bare: string | undefined, at: number) => {
+    // The domain of an email address isn't a link.
+    if (bare && at > 0 && /[@\w.-]/.test(text[at - 1])) return whole;
+    const url = linkHref(md ?? full ?? bare ?? '', !!bare);
+    if (!url) return whole;
+    const external = url.origin !== location.origin;
+    anchors.push(
+      `<a href="${escapeHtml(url.href)}"${external ? ' target="_blank" rel="noopener noreferrer"' : ''}>${escapeHtml(label ?? whole)}</a>`,
+    );
+    return `\u0000${anchors.length - 1}\u0000`;
+  });
+  return render(marked).replace(/\u0000(\d+)\u0000/g, (_, i: string) => anchors[Number(i)]);
+}
+
+/** Minimal, escape-first markdown: paragraphs, line breaks, **bold**, `code` and links. */
+export function renderText(text: string): string {
+  return withLinks(text.trim(), (plain) =>
+    escapeHtml(plain)
+      .split(/\n{2,}/)
+      .map((para) => `<p>${para
+        .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+        .replace(/`([^`]+)`/g, '<code>$1</code>')
+        .replace(/\n/g, '<br>')}</p>`)
+      .join(''),
+  );
 }
 
 /** **bold** and `code` only, for one line inside other text. */

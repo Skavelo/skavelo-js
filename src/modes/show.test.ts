@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { alreadyHere, onPage, ShowMode } from './show';
+import { alreadyHere, forScreen, onPage, ShowMode } from './show';
 import type { SessionStore } from '../core/session';
 import type { ShowStep } from '../types';
 
@@ -128,3 +128,78 @@ describe('ShowMode.resolve: a control behind an earlier step', () => {
     }
   });
 });
+
+describe('ShowMode.resolve on a phone', () => {
+  const session = { setWalkthrough: () => {} } as unknown as SessionStore;
+  const billing: ShowStep = { ...step('link', 'Billing'), pageUrlPattern: '/billing' };
+  const phone = (on: boolean) => {
+    window.matchMedia = ((q: string) => ({ matches: on, media: q })) as unknown as typeof window.matchMedia;
+  };
+  // Started long enough ago that a missing control isn't still on its way in.
+  const settled = (steps: ShowStep[]) => {
+    const mode = new ShowMode({ workflowId: 'w', steps }, session, () => {});
+    vi.spyOn(mode, 'msUntilLead').mockReturnValue(0);
+    return mode;
+  };
+
+  beforeEach(() => {
+    history.replaceState(null, '', '/');
+    Element.prototype.getBoundingClientRect = function (this: Element) {
+      const size = this.closest('[hidden]') ? 0 : 30;
+      return { x: 0, y: 0, left: 0, top: 0, right: size, bottom: size, width: size, height: size, toJSON: () => ({}) } as DOMRect;
+    };
+  });
+
+  it('points at the menu button when the link is hidden in the sidebar', () => {
+    phone(true);
+    document.body.innerHTML = `<button aria-controls="side" aria-label="Open menu">☰</button><nav id="side" hidden><a href="/billing">Billing</a></nav>`;
+    const view = settled([billing]).resolve();
+    expect(view?.el?.getAttribute('aria-label')).toBe('Open menu');
+    expect(view?.instruction).toBe('Open the menu first.');
+    expect(view?.details).toBe('Then tap **Billing**.');
+    expect(view?.bridge).toBe(true);
+  });
+
+  it("points at the menu button when the menu's links aren't on the page yet, and only until it's opened", () => {
+    phone(true);
+    document.body.innerHTML = `<header><button class="menu-toggle"></button></header><main></main>`;
+    const mode = settled([billing]);
+    const view = mode.resolve();
+    expect(view?.el?.className).toBe('menu-toggle');
+    (view!.el as HTMLElement).click();
+    expect(mode.resolve()?.el).toBeNull();
+  });
+
+  it('finds a link by where it goes when its label is different here', () => {
+    phone(true);
+    document.body.innerHTML = `<nav><a href="/settings/billing" aria-label="Payments">💳</a></nav>`;
+    const step: ShowStep = {
+      ...billing,
+      pageUrlPattern: '/settings/billing',
+      locators: [
+        { type: 'aria', value: 'link::Billing', score: 0.8 },
+        { type: 'attr', value: 'href=/settings/billing', score: 0.7 },
+      ],
+    };
+    expect(settled([step]).resolve()?.el?.getAttribute('aria-label')).toBe('Payments');
+  });
+
+  it("doesn't guess at a menu on a computer", () => {
+    phone(false);
+    document.body.innerHTML = `<header><button class="menu-toggle"></button></header><main></main>`;
+    expect(settled([billing]).resolve()?.el).toBeNull();
+  });
+});
+
+describe('forScreen', () => {
+  it('drops the sidebar and top bar and says tap on a phone', () => {
+    expect(forScreen('Click **Billing** in the sidebar.', true)).toBe('Tap **Billing**.');
+    expect(forScreen('Click **Profile** in the top bar, then click **Sign out**.', true)).toBe('Tap **Profile**, then tap **Sign out**.');
+    expect(forScreen('Keep clicking **Next**.', true)).toBe('Keep tapping **Next**.');
+  });
+
+  it('leaves the words alone on a computer', () => {
+    expect(forScreen('Click **Billing** in the sidebar.', false)).toBe('Click **Billing** in the sidebar.');
+  });
+});
+

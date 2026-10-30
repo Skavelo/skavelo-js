@@ -20,6 +20,19 @@ export function resolveLocator(locators: Locator[]): { el: Element | null; score
   return { el: null, score: 0 };
 }
 
+/**
+ * The step's control when it's in the page but not showing, like a sidebar link a phone layout
+ * keeps behind a menu button. Only locators reliable enough to highlight count.
+ */
+export function findHidden(locators: Locator[]): Element | null {
+  for (const loc of [...locators].sort((a, b) => b.score - a.score)) {
+    if (!isFreshEnough(loc.score)) continue;
+    const el = findByLocator(loc);
+    if (el && !isVisible(el)) return el;
+  }
+  return null;
+}
+
 export function isFreshEnough(score: number): boolean {
   return score >= SCORE_THRESHOLD;
 }
@@ -47,6 +60,7 @@ function findByLocator(loc: Locator): Element | null {
         if (eqIdx < 0) return null;
         const attr = loc.value.slice(0, eqIdx);
         const val = loc.value.slice(eqIdx + 1);
+        if (attr === 'href') return findByDestination(val);
         return document.querySelector(`[${CSS.escape(attr)}="${CSS.escape(val)}"]`);
       }
       case 'css':
@@ -57,6 +71,31 @@ function findByLocator(loc: Locator): Element | null {
   } catch {
     return null;
   }
+}
+
+/**
+ * A link to the page learning saw it go to, like /settings/billing or /invoices/:id, whatever its
+ * label says here. One that's showing wins over one tucked in a closed menu.
+ */
+function findByDestination(pattern: string): Element | null {
+  const trim = (p: string) => p.replace(/\/+$/, '') || '/';
+  const [path, hash = ''] = pattern.split('#');
+  const re = (p: string) =>
+    new RegExp('^' + trim(p).split(':id').map((x) => x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('[^/]+') + '$');
+  let hidden: Element | null = null;
+  for (const a of Array.from(document.querySelectorAll<HTMLAnchorElement>('a[href]'))) {
+    let to: URL;
+    try {
+      to = new URL(a.href);
+    } catch {
+      continue;
+    }
+    if (to.origin !== location.origin || !re(path).test(trim(to.pathname))) continue;
+    if (hash && !re(`#${hash}`).test(trim(to.hash))) continue;
+    if (isVisible(a)) return a;
+    hidden ??= a;
+  }
+  return hidden;
 }
 
 function findByAriaRoleAndName(role: string, name: string): Element | null {
@@ -170,7 +209,7 @@ function isInteractiveLike(el: HTMLElement): boolean {
   return false;
 }
 
-function isVisible(el: Element): boolean {
+export function isVisible(el: Element): boolean {
   const htmlEl = el as HTMLElement;
   const style = window.getComputedStyle(htmlEl);
   if (style.display === 'none' || style.visibility === 'hidden') return false;

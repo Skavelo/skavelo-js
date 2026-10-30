@@ -417,6 +417,8 @@ export class SkavelInstance {
       ...(this.handoffRoute() ? { canHandoff: true } : {}),
       ...(lookup ? { lookup } : {}),
       ...pageSignalsOrNothing(),
+      // On a phone the sidebar is usually behind a menu button, so answers say to open it.
+      ...(currentDevice() === 'mobile' ? { device: 'mobile' as const } : {}),
     };
     const stream = this.widget.beginStream();
 

@@ -132,6 +132,8 @@ export interface AskPayload {
   lookup?: LookupResult;
   /** What the screen shows that could explain a problem, for questions like "why isn't this working?". */
   pageSignals?: PageSignals;
+  /** Set on a phone-sized screen, where sidebars are usually behind a menu button. */
+  device?: 'mobile';
 }
 
 export interface PageSignals {
