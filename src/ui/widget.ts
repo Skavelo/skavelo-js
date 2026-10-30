@@ -328,6 +328,11 @@ const WIDGET_CSS = `
     background: var(--sk-surface); color: var(--sk-text); font: inherit; font-size: 14px; resize: vertical;
   }
   .sk-handoff-form input:focus-visible, .sk-handoff-form textarea:focus-visible { outline: 2px solid var(--sk-accent); outline-offset: 1px; }
+  /* iPhone browsers zoom the whole page into a field with text under 16px when it's tapped, and
+     stay zoomed, so the site scrolls sideways. On touch screens every widget field is 16px. */
+  @media (pointer: coarse) {
+    input.sk-field, .sk-composer input, .sk-handoff-form input, .sk-handoff-form textarea { font-size: 16px; }
+  }
   .sk-handoff-form .sk-action-buttons { margin-top: 4px; }
   .sk-handoff-error { font-size: 13px; color: #B42318; }
   .sk-handoff-status { font-size: 13.5px; color: var(--sk-text-2); }
@@ -971,8 +976,11 @@ export class Widget {
     this.renderSuggestions();
     // A preview inside the dashboard must never pull focus away from the settings form.
     if (this.preview || !focus) return;
-    if (view === 'composer') this.composerInput.focus();
-    if (view === 'panel') this.askInput.focus();
+    // On a phone, focusing raises the keyboard over the input bar at the bottom before it can be
+    // seen; there the visitor taps the field, and the browser brings it into view above the keyboard.
+    const touch = !!window.matchMedia?.('(pointer: coarse)').matches;
+    if (view === 'composer' && !touch) this.composerInput.focus();
+    if (view === 'panel' && !touch) this.askInput.focus();
     if (view === 'pill') this.pill.focus({ preventScroll: true });
   }
 
