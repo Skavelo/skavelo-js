@@ -15,6 +15,10 @@ const WIDGET_CSS = `
     --sk-shadow: 0 1px 2px rgba(24,24,27,.06), 0 12px 32px rgba(24,24,27,.14), 0 32px 64px -12px rgba(24,24,27,.20);
     /* The button and floating suggestions sit straight on the page, so they need a firmer lift than the panel. */
     --sk-float: 0 0 0 1px rgba(24,24,27,.04), 0 2px 6px rgba(24,24,27,.08), 0 0 40px rgba(24,24,27,.12), 0 24px 56px -10px rgba(24,24,27,.24);
+    /* What sits on the page itself (the button, the input bar, floating suggestions) carries the
+       accent at its edge and a glow in it, so it stands out on busy, pale and dark pages alike. */
+    --sk-edge: color-mix(in srgb, var(--sk-accent) 55%, var(--sk-line));
+    --sk-glow: 0 0 0 3px color-mix(in srgb, var(--sk-accent) 12%, transparent), 0 6px 28px -2px color-mix(in srgb, var(--sk-accent) 38%, transparent);
     font-family: ${FONT};
     color: var(--sk-text);
     -webkit-font-smoothing: antialiased;
@@ -55,11 +59,11 @@ const WIDGET_CSS = `
     height: var(--sk-launch);
     padding: 0 calc(var(--sk-launch) * .35) 0 calc(var(--sk-launch) * .27);
     border-radius: calc(var(--sk-launch) * .27);
-    border: 1px solid var(--sk-line);
+    border: 1.5px solid var(--sk-edge);
     background: color-mix(in srgb, var(--sk-surface) 92%, transparent);
     backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
-    box-shadow: var(--sk-float);
+    box-shadow: var(--sk-glow), var(--sk-float);
     font-size: clamp(13px, calc(var(--sk-launch) * .29), 19px);
     font-weight: 500;
     color: var(--sk-text-2);
@@ -82,16 +86,16 @@ const WIDGET_CSS = `
     inset: -16px -10px;
     z-index: -1;
     border-radius: 999px;
-    background: radial-gradient(closest-side, color-mix(in srgb, var(--sk-accent) 30%, transparent), transparent);
+    background: radial-gradient(closest-side, color-mix(in srgb, var(--sk-accent) 40%, transparent), transparent);
     filter: blur(12px);
-    opacity: .35;
+    opacity: .6;
     transition: opacity 220ms ease;
   }
   .sk-pill:hover::before, .sk-pill:focus-visible::before { opacity: 1; }
   .sk-pill--intro::before { animation: sk-glow 1.6s ease-in-out 2; }
   .sk-pill:hover { transform: translateY(-1px); color: var(--sk-text); }
   .sk-pill:active { transform: translateY(0) scale(.98); }
-  @keyframes sk-glow { 0%, 100% { opacity: .35; } 50% { opacity: 1; } }
+  @keyframes sk-glow { 0%, 100% { opacity: .6; } 50% { opacity: 1; } }
 
   /* Composer */
   .sk-composer {
@@ -103,11 +107,11 @@ const WIDGET_CSS = `
     height: 52px;
     padding: 0 14px 0 18px;
     border-radius: 16px;
-    border: 1px solid var(--sk-line);
+    border: 1.5px solid var(--sk-edge);
     background: color-mix(in srgb, var(--sk-surface) 94%, transparent);
     backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
-    box-shadow: var(--sk-shadow);
+    box-shadow: var(--sk-glow), var(--sk-shadow);
     animation: sk-in 200ms cubic-bezier(.2,.8,.2,1);
   }
   .sk-composer .sk-mark { color: var(--sk-text-3); }
@@ -146,7 +150,7 @@ const WIDGET_CSS = `
   .sk-chip {
     padding: 8px 14px;
     border-radius: 999px;
-    border: 1px solid var(--sk-line);
+    border: 1.5px solid color-mix(in srgb, var(--sk-accent) 40%, var(--sk-line));
     background: var(--sk-surface);
     color: var(--sk-text);
     font-size: 14px;
@@ -155,7 +159,7 @@ const WIDGET_CSS = `
     box-shadow: var(--sk-float);
     transition: border-color 120ms ease, background 120ms ease;
   }
-  .sk-chip:hover { border-color: color-mix(in srgb, var(--sk-accent) 45%, var(--sk-line)); background: var(--sk-subtle); }
+  .sk-chip:hover { border-color: var(--sk-edge); background: var(--sk-subtle); }
   .sk-composer input { font-size: 16px; }
   .sk-x {
     position: absolute;
@@ -488,6 +492,9 @@ const WIDGET_CSS = `
     --sk-text-3: #85858F;
     --sk-shadow: 0 1px 2px rgba(0,0,0,.4), 0 12px 32px rgba(0,0,0,.45), 0 32px 64px -12px rgba(0,0,0,.55);
       --sk-float: 0 2px 6px rgba(0,0,0,.45), 0 0 40px rgba(0,0,0,.5), 0 24px 56px -10px rgba(0,0,0,.65);
+    /* A dark shadow disappears on a dark page; the accent glow does the lifting there. */
+    --sk-edge: color-mix(in srgb, var(--sk-accent) 70%, var(--sk-line));
+    --sk-glow: 0 0 0 3px color-mix(in srgb, var(--sk-accent) 20%, transparent), 0 0 32px 2px color-mix(in srgb, var(--sk-accent) 45%, transparent);
   }
   @media (prefers-color-scheme: dark) {
     .sk-dock:not(.sk-light), .sk-callout:not(.sk-light) {
@@ -499,6 +506,8 @@ const WIDGET_CSS = `
       --sk-text-3: #85858F;
       --sk-shadow: 0 1px 2px rgba(0,0,0,.4), 0 12px 32px rgba(0,0,0,.45), 0 32px 64px -12px rgba(0,0,0,.55);
       --sk-float: 0 2px 6px rgba(0,0,0,.45), 0 0 40px rgba(0,0,0,.5), 0 24px 56px -10px rgba(0,0,0,.65);
+      --sk-edge: color-mix(in srgb, var(--sk-accent) 70%, var(--sk-line));
+      --sk-glow: 0 0 0 3px color-mix(in srgb, var(--sk-accent) 20%, transparent), 0 0 32px 2px color-mix(in srgb, var(--sk-accent) 45%, transparent);
     }
   }
 
