@@ -238,10 +238,16 @@ const WIDGET_CSS = `
   }
   /* On a phone, a walkthrough step is a compact card at the bottom, so the page and the control it
      points at stay in view above it. */
-  /* 639px: below CALLOUT_MIN_VIEWPORT, where steps show in the panel instead of beside the control. */
-  @media (max-width: 639px) {
+  /* 639px: below CALLOUT_MIN_VIEWPORT, where steps show in the panel instead of beside the control.
+     A phone on its side is wide but short, and gets the same compact card. */
+  @media (max-width: 639px), (max-height: 500px) {
     .sk-panel:has(.sk-step:not([hidden])) { height: auto; max-height: min(60dvh, 420px); }
     .sk-panel:has(.sk-step:not([hidden])) .sk-body { flex: 0 1 auto; }
+  }
+  /* So short that the follow-up box would push Back and Next out of sight: the step comes first. */
+  @media (max-height: 500px) {
+    .sk-panel:has(.sk-step:not([hidden])) { max-height: calc(100dvh - 24px); }
+    .sk-panel:has(.sk-step:not([hidden])) .sk-ask { display: none; }
   }
   .sk-head {
     display: flex;
@@ -404,6 +410,8 @@ const WIDGET_CSS = `
     padding: 14px 0 10px;
     border-top: 1px solid var(--sk-line);
   }
+  /* In the panel, Back and Next stay in view when a long step has to scroll. */
+  .sk-panel .sk-step-nav { position: sticky; bottom: 0; background: var(--sk-surface); }
   /* Step marker: the accent dot from the end of the logo, with a soft halo. */
   .sk-stepmark {
     width: 9px;
