@@ -1,6 +1,6 @@
 {
   "name": "@skavelo/sdk",
-  "version": "0.1.11",
+  "version": "0.1.12",
   "description": "Skavelo's in-product AI guide: answers your users' questions, walks them through your app and runs actions they approve.",
   "type": "module",
   "license": "Elastic-2.0",
