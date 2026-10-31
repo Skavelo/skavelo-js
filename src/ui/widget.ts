@@ -241,12 +241,13 @@ const WIDGET_CSS = `
   /* 639px: below CALLOUT_MIN_VIEWPORT, where steps show in the panel instead of beside the control.
      A phone on its side is wide but short, and gets the same compact card. */
   @media (max-width: 639px), (max-height: 500px) {
-    .sk-panel:has(.sk-step:not([hidden])) { height: auto; max-height: min(60dvh, 420px); }
-    .sk-panel:has(.sk-step:not([hidden])) .sk-body { flex: 0 1 auto; }
+    /* Unless they expanded it: then they asked for the room. */
+    .sk-panel:not(.sk-expanded):has(.sk-step:not([hidden])) { height: auto; max-height: min(60dvh, 420px); }
+    .sk-panel:not(.sk-expanded):has(.sk-step:not([hidden])) .sk-body { flex: 0 1 auto; }
   }
   /* So short that the follow-up box would push Back and Next out of sight: the step comes first. */
   @media (max-height: 500px) {
-    .sk-panel:has(.sk-step:not([hidden])) { max-height: calc(100dvh - 24px); }
+    .sk-panel:not(.sk-expanded):has(.sk-step:not([hidden])) { max-height: calc(100dvh - 24px); }
     .sk-panel:has(.sk-step:not([hidden])) .sk-ask { display: none; }
   }
   .sk-head {

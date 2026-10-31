@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { alreadyHere, forScreen, onPage, ShowMode } from './show';
+import { alreadyHere, forScreen, locatorsOf, onPage, ShowMode } from './show';
 import type { SessionStore } from '../core/session';
 import type { ShowStep } from '../types';
 
@@ -203,3 +203,38 @@ describe('forScreen', () => {
   });
 });
 
+
+describe('a walkthrough the team wrote', () => {
+  const session = { setWalkthrough: () => {} } as unknown as SessionStore;
+  // Steps written by hand: no locators, only the instruction and the page.
+  const signup: ShowStep[] = [
+    { id: 'a', order: 1, instruction: 'Click **Create an account**.', pageUrlPattern: '/login', locators: [] },
+    { id: 'b', order: 2, instruction: 'Enter your email address in the **Work email** field.', pageUrlPattern: '/signup', locators: [] },
+    { id: 'c', order: 3, instruction: 'Click **Continue**.', pageUrlPattern: '/signup', locators: [] },
+  ];
+
+  beforeEach(() => {
+    Element.prototype.getBoundingClientRect = () => ({ x: 0, y: 0, left: 0, top: 0, right: 200, bottom: 30, width: 200, height: 30, toJSON: () => ({}) }) as DOMRect;
+    document.body.innerHTML = `<a href="/login">Sign in</a><label for="email">Work email</label><input id="email" type="email"><button>Continue</button>`;
+  });
+
+  it('starts on this page when the first step only leads here from another', () => {
+    history.replaceState(null, '', '/signup');
+    expect(alreadyHere(signup)).toBe(1);
+    history.replaceState(null, '', '/login');
+    expect(alreadyHere(signup)).toBe(0);
+  });
+
+  it('finds the field and button by the names in bold', () => {
+    history.replaceState(null, '', '/signup');
+    const mode = new ShowMode({ workflowId: 'w', steps: signup }, session, () => {});
+    expect(mode.resolve()?.el?.id).toBe('email');
+    mode.advance();
+    expect(mode.resolve()?.el?.textContent).toBe('Continue');
+  });
+
+  it('only guesses from the instruction when the step has no locators', () => {
+    expect(locatorsOf({ ...signup[1], locators: [{ type: 'testid', value: 'x', score: 0.9 }] })).toEqual([{ type: 'testid', value: 'x', score: 0.9 }]);
+    expect(locatorsOf(signup[1])[0]).toEqual({ type: 'aria', value: 'textbox::Work email', score: 0.6 });
+  });
+});

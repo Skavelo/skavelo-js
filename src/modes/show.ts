@@ -83,7 +83,7 @@ export class ShowMode {
     // Steps are written on a computer; a phone has no sidebar on screen and is tapped.
     const step = { ...current, instruction: forScreen(current.instruction) };
 
-    const { el, score } = resolveLocator(step.locators);
+    const { el, score } = resolveLocator(locatorsOf(step));
     // A step from another page must not light up a look-alike here, like a contact's "Open menu"
     // for an automation's. Links and the top bar or sidebar look the same on every page.
     const elsewhere = !!step.pageUrlPattern && !onPage(step.pageUrlPattern)
@@ -178,7 +178,7 @@ export class ShowMode {
   /** The step's control hidden on this page, or, for a step on another page, a hidden link there. */
   private hiddenTarget(step: ShowStep): Element | null {
     if (step.pageUrlPattern && !onPage(step.pageUrlPattern)) return wayTo(step.pageUrlPattern, true)?.el ?? null;
-    return findHidden(step.locators);
+    return findHidden(locatorsOf(step));
   }
 
   /** Milliseconds before a missing control may be led to through an earlier step; 0 once it may. */
@@ -190,7 +190,7 @@ export class ShowMode {
   private wayIn(): { el: Element; instruction: string } | null {
     for (let i = this.stepIndex - 1; i >= 0; i--) {
       const earlier = this.payload.steps[i];
-      const { el, score } = resolveLocator(earlier.locators);
+      const { el, score } = resolveLocator(locatorsOf(earlier));
       if (!el || !isFreshEnough(score)) continue;
       // A look-alike from another page doesn't count, except links and the top bar or sidebar.
       const elsewhere = !!earlier.pageUrlPattern && !onPage(earlier.pageUrlPattern)
@@ -283,16 +283,51 @@ function lowerFirst(text: string): string {
   return /^[A-Z][a-z]/.test(text) ? text.charAt(0).toLowerCase() + text.slice(1) : text;
 }
 
-/** How many leading steps are links to the current page, e.g. "Click **Automations**" while on Automations. */
+/**
+ * Where a fresh walkthrough starts: past the opening steps that only lead to the page the user is
+ * on, like "Click **Automations**" while on Automations, or "Click **Create an account**" on the
+ * sign-in page when they're already signing up.
+ */
 export function alreadyHere(steps: ShowStep[]): number {
   let i = 0;
   while (i < steps.length - 1) {
-    const { el } = resolveLocator(steps[i].locators);
+    const { el } = resolveLocator(locatorsOf(steps[i]));
     const href = el instanceof HTMLAnchorElement ? el.href : null;
     if (!href || !samePage(href, location.href)) break;
     i += 1;
   }
-  return i;
+  if (i > 0) return i;
+  // The first step happens on another page, and a later one on this page: everything before
+  // that only gets them here.
+  const here = steps.findIndex((s) => !!s.pageUrlPattern && onPage(s.pageUrlPattern));
+  const before = steps.slice(0, Math.max(here, 0));
+  return here > 0 && before.every((s) => !!s.pageUrlPattern && !onPage(s.pageUrlPattern)) ? here : 0;
+}
+
+const FIELD_WORDS = /^(field|fields|box|input)\b/i;
+
+/**
+ * How to find a step's control. Learned steps carry locators from the product map; a step the
+ * team wrote, or one drafted from an answer, may have none, and is found by the name it shows in
+ * bold: "Enter your email in the **Work email** field." looks for a field labelled Work email.
+ */
+export function locatorsOf(step: ShowStep): ShowStep['locators'] {
+  if (step.locators?.length) return step.locators;
+  const m = step.instruction.match(/\*\*(.+?)\*\*\s*(\w+)?/);
+  if (!m) return [];
+  const name = m[1].trim();
+  const word = m[2] ?? '';
+  const roles = FIELD_WORDS.test(word)
+    ? ['textbox', 'combobox', 'checkbox']
+    : /^(tab)$/i.test(word)
+      ? ['tab']
+      : /^(link)$/i.test(word)
+        ? ['link']
+        : ['button', 'link', 'tab', 'menuitem', 'option'];
+  return [
+    ...roles.map((role) => ({ type: 'aria' as const, value: `${role}::${name}`, score: 0.6 })),
+    { type: 'text' as const, value: name, score: 0.55 },
+  ];
 }
 
 function samePage(a: string, b: string): boolean {
