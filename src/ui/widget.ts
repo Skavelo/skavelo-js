@@ -800,6 +800,10 @@ export class Widget {
   private started = false;
   private loading = false;
   private hasConversation = false;
+  /** On a phone, the step card moved to the top so it doesn't cover the control. */
+  private dockTop = false;
+  private dockMovedAt = -1;
+  private clearTimer = 0;
   private icon: string | undefined;
   private title = 'Help';
   private theme: AppliedTheme = {};
@@ -1545,10 +1549,55 @@ export class Widget {
       }, CALLOUT_GRACE_MS);
     } else {
       this.placeStep('panel');
+      this.scheduleKeepClear();
     }
   }
 
+  private scheduleKeepClear() {
+    clearTimeout(this.clearTimer);
+    // After the highlight has scrolled the control into view.
+    this.clearTimer = window.setTimeout(() => this.keepStepClear(), 450);
+  }
+
+  /**
+   * On a phone the step card covers the bottom of the screen, and can sit on top of the control it
+   * points at. Scroll the control into the space above the card; when the page can't scroll that
+   * far, like a short sign-up form, move the card to the top of the screen instead.
+   */
+  private keepStepClear() {
+    const step = this.step;
+    const anchor = step?.anchor;
+    if (!step || this.preview || !anchor?.isConnected || this.view !== 'panel' || this.calloutFits()) return;
+    const r = anchor.getBoundingClientRect();
+    if (!r.width && !r.height) return;
+    const p = this.panel.getBoundingClientRect();
+    const gap = 12;
+    if (r.bottom <= p.top - gap || r.top >= p.bottom + gap) return;
+    if (!this.dockTop) {
+      const delta = r.bottom - (p.top - gap * 2);
+      const room = document.documentElement.scrollHeight - window.innerHeight - window.scrollY;
+      if (delta > 0 && delta <= room && r.top - delta >= gap) {
+        window.scrollBy({ top: delta, behavior: 'smooth' });
+        return;
+      }
+    }
+    // Moved once per step, so a control too tall for either side doesn't send the card back and forth.
+    if (this.dockMovedAt === step.stepIndex) return;
+    this.dockMovedAt = step.stepIndex;
+    this.setDockTop(!this.dockTop);
+  }
+
+  private setDockTop(top: boolean) {
+    this.dockTop = top;
+    const offset = `${this.theme.offset ?? 24}px`;
+    this.dock.style.top = top ? offset : '';
+    this.dock.style.bottom = top ? 'auto' : offset;
+  }
+
   clearStep() {
+    clearTimeout(this.clearTimer);
+    this.dockMovedAt = -1;
+    if (this.dockTop) this.setDockTop(false);
     this.step = null;
     this.stepInPanel = false;
     this.stepPlace = 'panel';
@@ -1706,6 +1755,7 @@ export class Widget {
     d.classList.remove('sk-pos-center', 'sk-pos-left', 'sk-pos-right');
     d.classList.add(`sk-pos-${position.replace('bottom-', '')}`);
     d.style.bottom = offset;
+    if (this.dockTop) this.setDockTop(true);
     d.style.left = position === 'bottom-left' ? offset : '';
     d.style.right = position === 'bottom-right' ? offset : '';
 
@@ -1815,6 +1865,7 @@ export class Widget {
   }
 
   destroy() {
+    clearTimeout(this.clearTimer);
     cancelAnimationFrame(this.schemeFrame);
     this.schemeObserver?.disconnect();
     if (this.schemeUpdate) this.schemeMedia?.removeEventListener?.('change', this.schemeUpdate);
