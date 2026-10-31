@@ -60,9 +60,8 @@ const WIDGET_CSS = `
     padding: 0 calc(var(--sk-launch) * .35) 0 calc(var(--sk-launch) * .27);
     border-radius: calc(var(--sk-launch) * .27);
     border: 1.5px solid var(--sk-edge);
-    background: color-mix(in srgb, var(--sk-surface) 92%, transparent);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
+    /* Solid, so the glow behind it stays a halo instead of tinting the button. */
+    background: var(--sk-surface);
     box-shadow: var(--sk-glow), var(--sk-float);
     font-size: clamp(13px, calc(var(--sk-launch) * .29), 19px);
     font-weight: 500;
@@ -91,7 +90,22 @@ const WIDGET_CSS = `
     opacity: .6;
     transition: opacity 220ms ease;
   }
+  /* The button's own fill, over the glow: the pill is its own stacking layer, so the glow would
+     otherwise be painted over its background and tint it. */
+  .sk-pill::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    border-radius: inherit;
+    background: var(--sk-surface);
+  }
   .sk-pill:hover::before, .sk-pill:focus-visible::before { opacity: 1; }
+  /* Glow switched off in Appearance: a plain edge and shadow, no accent halo. The colours are reset
+     with the light and dark ones further down, which would otherwise bring the glow back. */
+  .sk-noglow .sk-pill::before { display: none; }
+  .sk-noglow .sk-pill, .sk-noglow .sk-composer, .sk-noglow .sk-chip { border-width: 1px; }
+  .sk-noglow .sk-chip { border-color: var(--sk-line); }
   .sk-pill--intro::before { animation: sk-glow 1.6s ease-in-out 2; }
   .sk-pill:hover { transform: translateY(-1px); color: var(--sk-text); }
   .sk-pill:active { transform: translateY(0) scale(.98); }
@@ -206,6 +220,8 @@ const WIDGET_CSS = `
     flex-direction: column;
     width: min(420px, calc(100vw - 32px));
     max-height: min(560px, calc(100vh - 48px));
+    /* The height a phone actually shows, without its browser bars; older browsers keep the line above. */
+    max-height: min(560px, calc(100dvh - 48px));
     border-radius: 18px;
     border: 1px solid var(--sk-line);
     background: var(--sk-surface);
@@ -217,7 +233,15 @@ const WIDGET_CSS = `
   .sk-panel.sk-expanded {
     width: min(720px, calc(100vw - 32px));
     height: min(720px, calc(100vh - 48px));
+    height: min(720px, calc(100dvh - 48px));
     max-height: none;
+  }
+  /* On a phone, a walkthrough step is a compact card at the bottom, so the page and the control it
+     points at stay in view above it. */
+  /* 639px: below CALLOUT_MIN_VIEWPORT, where steps show in the panel instead of beside the control. */
+  @media (max-width: 639px) {
+    .sk-panel:has(.sk-step:not([hidden])) { height: auto; max-height: min(60dvh, 420px); }
+    .sk-panel:has(.sk-step:not([hidden])) .sk-body { flex: 0 1 auto; }
   }
   .sk-head {
     display: flex;
@@ -519,6 +543,8 @@ const WIDGET_CSS = `
   /* Dashboard preview: sits inside its frame instead of the viewport. */
   .sk-dock.sk-preview { position: absolute; z-index: 1; }
   .sk-preview .sk-panel { max-height: calc(100% - 24px); }
+  .sk-dock.sk-noglow { --sk-edge: var(--sk-line); --sk-glow: 0 0 #0000; }
+  @media (prefers-color-scheme: dark) { .sk-dock.sk-noglow { --sk-edge: var(--sk-line); --sk-glow: 0 0 #0000; } }
 
   @media (prefers-reduced-motion: reduce) {
     .sk-dock *, .sk-dock *::before, .sk-callout { animation: none !important; transition: none !important; }
@@ -568,6 +594,26 @@ function isDark(hex: string): boolean {
 }
 
 const DEFAULT_ACCENT = { light: '#A3224A', dark: '#E0456F' };
+
+/**
+ * Whether the page is light or dark: the color-scheme it declares, else its background. Null when
+ * it can't tell, which leaves the visitor's device setting to decide.
+ */
+export function pageScheme(): 'light' | 'dark' | null {
+  const root = document.documentElement;
+  const declared = getComputedStyle(root).colorScheme.trim();
+  if (declared === 'light' || declared === 'only light') return 'light';
+  if (declared === 'dark' || declared === 'only dark') return 'dark';
+  for (const el of [document.body, root]) {
+    if (!el) continue;
+    const rgba = getComputedStyle(el).backgroundColor.match(/[\d.]+/g)?.map(Number);
+    if (!rgba || rgba.length < 3 || (rgba.length > 3 && rgba[3] < 0.5)) continue;
+    const [r, g, b] = rgba;
+    return (0.299 * r + 0.587 * g + 0.114 * b) / 255 < 0.5 ? 'dark' : 'light';
+  }
+  // No background anywhere: the browser paints white unless the page allows dark.
+  return /dark/.test(declared) ? null : 'light';
+}
 
 const LAUNCHER_SIZES: Record<string, number> = { sm: 44, md: 52, lg: 60, xl: 68 };
 
@@ -749,6 +795,12 @@ export class Widget {
   private title = 'Help';
   private theme: AppliedTheme = {};
   private scheme: 'light' | 'dark' | null = null;
+  /** What the page itself looks like, followed while no scheme is forced. */
+  private pageScheme: 'light' | 'dark' | null = null;
+  private schemeFrame = 0;
+  private schemeObserver: MutationObserver | null = null;
+  private schemeMedia: MediaQueryList | null = null;
+  private schemeUpdate: (() => void) | null = null;
   private preview: boolean;
   private answerEls = new Map<string, HTMLElement>();
   private callout: HTMLDivElement;
@@ -849,6 +901,7 @@ export class Widget {
     this.askBtn = $('.sk-ask button');
 
     this.applyTheme(theme ?? {});
+    if (!this.preview) this.followPage();
 
     // Pulse the glow only the first time the pill appears in this browser session.
     try {
@@ -1640,6 +1693,7 @@ export class Widget {
     const position = theme.position ?? 'bottom-center';
     const offset = `${theme.offset ?? 24}px`;
 
+    d.classList.toggle('sk-noglow', theme.glow === false);
     d.classList.remove('sk-pos-center', 'sk-pos-left', 'sk-pos-right');
     d.classList.add(`sk-pos-${position.replace('bottom-', '')}`);
     d.style.bottom = offset;
@@ -1684,9 +1738,37 @@ export class Widget {
     (d.querySelector('.sk-foot') as HTMLElement).hidden = theme.branding === false;
   }
 
-  /** Forces light or dark (dashboard preview); null follows the visitor's system setting. */
+  /** Forces light or dark (dashboard preview); null matches the page again. */
   setScheme(scheme: 'light' | 'dark' | null) {
     this.scheme = scheme;
+    this.paintScheme(scheme ?? this.pageScheme);
+  }
+
+  /**
+   * Light or dark to match the page it's on, not the visitor's device: a light app opened on a
+   * phone in dark mode gets a light widget. Follows the page when it switches theme.
+   */
+  private followPage() {
+    const update = () => {
+      cancelAnimationFrame(this.schemeFrame);
+      this.schemeFrame = requestAnimationFrame(() => {
+        const next = pageScheme();
+        if (next === this.pageScheme) return;
+        this.pageScheme = next;
+        if (!this.scheme) this.paintScheme(next);
+      });
+    };
+    update();
+    this.schemeObserver = new MutationObserver(update);
+    for (const el of [document.documentElement, document.body]) {
+      if (el) this.schemeObserver.observe(el, { attributes: true, attributeFilter: ['class', 'style', 'data-theme', 'data-mode', 'data-color-scheme'] });
+    }
+    this.schemeMedia = window.matchMedia?.('(prefers-color-scheme: dark)') ?? null;
+    this.schemeMedia?.addEventListener?.('change', update);
+    this.schemeUpdate = update;
+  }
+
+  private paintScheme(scheme: 'light' | 'dark' | null) {
     for (const el of [this.dock, this.callout]) {
       el.classList.toggle('sk-light', scheme === 'light');
       el.classList.toggle('sk-dark', scheme === 'dark');
@@ -1718,11 +1800,15 @@ export class Widget {
 
   private looksDark(): boolean {
     if (this.theme.background) return isDark(this.theme.background);
-    if (this.scheme) return this.scheme === 'dark';
+    const scheme = this.scheme ?? this.pageScheme;
+    if (scheme) return scheme === 'dark';
     return !!window.matchMedia?.('(prefers-color-scheme: dark)').matches;
   }
 
   destroy() {
+    cancelAnimationFrame(this.schemeFrame);
+    this.schemeObserver?.disconnect();
+    if (this.schemeUpdate) this.schemeMedia?.removeEventListener?.('change', this.schemeUpdate);
     clearTimeout(this.floatTimer);
     clearTimeout(this.calloutGrace);
     this.hideCallout();

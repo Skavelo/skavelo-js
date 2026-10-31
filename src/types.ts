@@ -89,6 +89,8 @@ export interface ThemeCfg {
    * "spotlight" dims the rest of the page, "trace" draws an outline, "ring" is a plain ring.
    */
   highlight?: HighlightStyle;
+  /** The accent edge and glow on the launcher, input bar and suggestions. Default true; false gives a plain shadow. */
+  glow?: boolean;
   /** Widget position on screen. Default "bottom-center". */
   position?: "bottom-center" | "bottom-right" | "bottom-left";
   /** Launcher text. Default "Get help". With launcher "icon" it isn't shown, but screen readers still announce it. */
@@ -106,7 +108,7 @@ export interface ThemeCfg {
   icon?: string;
   /** Header text in the chat panel. Defaults to the agent's name from the dashboard. */
   title?: string;
-  /** Panel background as hex. Unset follows the visitor's light or dark mode. */
+  /** Panel background as hex. Unset matches the page: light on light pages, dark on dark ones. */
   background?: string;
   /** Panel text color as hex. Unset is picked to contrast with the background. */
   text?: string;

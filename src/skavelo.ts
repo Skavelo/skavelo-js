@@ -55,6 +55,14 @@ export function diagnosisNote(diagnosis: string): string {
 }
 
 /** The page's signals, left out when there's nothing to report or reading them fails. */
+/**
+ * The theme options code actually set. `accent: undefined`, common when a value is optional, means
+ * "not set" and must leave the dashboard's choice alone instead of erasing it.
+ */
+export function setOnly<T extends object>(theme: T | undefined): Partial<T> {
+  return Object.fromEntries(Object.entries(theme ?? {}).filter(([, v]) => v !== undefined && v !== null && v !== '')) as Partial<T>;
+}
+
 function pageSignalsOrNothing() {
   try {
     const signals = collectPageSignals();
@@ -198,7 +206,7 @@ export class SkavelInstance {
   private applyRemote(remote: RemoteConfig) {
     this.remote = remote;
     this.watchForStuck();
-    const theme = { ...remote.appearance, ...this.cfg.theme };
+    const theme = { ...remote.appearance, ...setOnly(this.cfg.theme) };
     this.widget.applyTheme({ title: remote.name, ...theme, branding: remote.branding });
     // The dashboard's accent and style reach the highlight too, not only what's set in code.
     this.highlight.setTheme({ accent: theme.accent, highlight: theme.highlight ?? 'beacon' });
