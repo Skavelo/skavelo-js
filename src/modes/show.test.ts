@@ -254,6 +254,15 @@ describe('pointing at the right control', () => {
     expect(new ShowMode({ workflowId: 'w', steps: [step] }, session, () => {}).resolve()?.el?.id).toBe('dialog');
   });
 
+  it("does the same when the dialog has no aria-modal", () => {
+    history.replaceState(null, '', '/agents/abc/suggestions');
+    document.body.innerHTML = `
+      <main aria-hidden="true"><button id="page">Add suggestion</button></main>
+      <div role="dialog"><button id="dialog">Add suggestion</button></div>`;
+    const step: ShowStep = { id: 's', order: 1, instruction: 'Click **Add suggestion**.', pageUrlPattern: '/agents/:id/suggestions', locators: [{ type: 'aria', value: 'button::Add suggestion', score: 0.8 }] };
+    expect(new ShowMode({ workflowId: 'w', steps: [step] }, session, () => {}).resolve()?.el?.id).toBe('dialog');
+  });
+
   it("leads to an agent's page through that agent's link, not a link to the page they're on", () => {
     history.replaceState(null, '', '/agents');
     document.body.innerHTML = `

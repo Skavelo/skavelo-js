@@ -47,13 +47,17 @@ function usable(el: Element): boolean {
   return !modalOpen() || !el.closest('[aria-hidden="true"]');
 }
 
+// Not every library sets aria-modal (Base UI hides the page with aria-hidden but doesn't), so any
+// open dialog that isn't itself hidden counts.
 function modalOpen(): boolean {
-  if (document.querySelector('[role="dialog"][aria-modal="true"], [role="alertdialog"][aria-modal="true"]')) return true;
   try {
-    return !!document.querySelector('dialog:modal');
+    if (document.querySelector('dialog:modal')) return true;
   } catch {
-    return false;
+    // :modal isn't supported everywhere.
   }
+  return Array.from(document.querySelectorAll('[role="dialog"], [role="alertdialog"], dialog[open]')).some(
+    (d) => !d.closest('[aria-hidden="true"], [inert]') && isVisible(d),
+  );
 }
 
 /** The first element for a selector that the user can reach. */
