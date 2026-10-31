@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { alreadyHere, forScreen, locatorsOf, onPage, ShowMode } from './show';
+import { alreadyHere, forScreen, locatorsOf, onPage, ShowMode, wayTo } from './show';
 import type { SessionStore } from '../core/session';
 import type { ShowStep } from '../types';
 
@@ -236,5 +236,29 @@ describe('a walkthrough the team wrote', () => {
   it('only guesses from the instruction when the step has no locators', () => {
     expect(locatorsOf({ ...signup[1], locators: [{ type: 'testid', value: 'x', score: 0.9 }] })).toEqual([{ type: 'testid', value: 'x', score: 0.9 }]);
     expect(locatorsOf(signup[1])[0]).toEqual({ type: 'aria', value: 'textbox::Work email', score: 0.6 });
+  });
+});
+
+describe('pointing at the right control', () => {
+  const session = { setWalkthrough: () => {} } as unknown as SessionStore;
+  beforeEach(() => {
+    Element.prototype.getBoundingClientRect = () => ({ x: 0, y: 0, left: 0, top: 0, right: 200, bottom: 30, width: 200, height: 30, toJSON: () => ({}) }) as DOMRect;
+  });
+
+  it("takes the open dialog's button over the same-named one behind it", () => {
+    history.replaceState(null, '', '/agents/abc/suggestions');
+    document.body.innerHTML = `
+      <main aria-hidden="true"><button id="page">Add suggestion</button></main>
+      <div role="dialog" aria-modal="true"><button id="dialog">Add suggestion</button></div>`;
+    const step: ShowStep = { id: 's', order: 1, instruction: 'Click **Add suggestion**.', pageUrlPattern: '/agents/:id/suggestions', locators: [{ type: 'aria', value: 'button::Add suggestion', score: 0.8 }] };
+    expect(new ShowMode({ workflowId: 'w', steps: [step] }, session, () => {}).resolve()?.el?.id).toBe('dialog');
+  });
+
+  it("leads to an agent's page through that agent's link, not a link to the page they're on", () => {
+    history.replaceState(null, '', '/agents');
+    document.body.innerHTML = `
+      <a href="/agents" aria-label="Skavelo home">logo</a>
+      <nav><a href="/agents">All agents</a><a href="/agents/2355-b1cf">Skavelo</a></nav>`;
+    expect(wayTo('/agents/:id/targeting')?.label).toBe('Skavelo');
   });
 });

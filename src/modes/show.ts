@@ -253,8 +253,10 @@ export function wayTo(pattern: string, hidden = false): { el: HTMLAnchorElement;
       continue;
     }
     const exact = onPage(target, path);
-    const above = !exact && path !== '/' && target.startsWith(`${path}/`);
+    const above = !exact && path !== '/' && leadsTowards(target, path);
     if (!exact && !above) continue;
+    // A link to the page they're on gets them nowhere, like the logo while on the home page.
+    if (samePage(a.href, location.href)) continue;
     const r = a.getBoundingClientRect();
     const showing = r.width > 0 && r.height > 0 && getComputedStyle(a).visibility !== 'hidden';
     // hidden: only links that aren't showing, like the sidebar's on a phone, to find what opens them.
@@ -265,6 +267,16 @@ export function wayTo(pattern: string, hidden = false): { el: HTMLAnchorElement;
     if (!best || rank > best.rank) best = { el: a, label, rank };
   }
   return best && { el: best.el, label: best.label };
+}
+
+/**
+ * Whether a link's page sits above a step's page: /settings above /settings/compliance, and the
+ * agent at /agents/2355… above /agents/:id/targeting, where :id stands for any one segment.
+ */
+function leadsTowards(target: string, path: string): boolean {
+  const want = target.split('/');
+  const have = path.split('/');
+  return have.length < want.length && have.every((seg, i) => seg === want[i] || want[i] === ':id');
 }
 
 /**

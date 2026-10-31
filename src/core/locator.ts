@@ -37,6 +37,30 @@ export function isFreshEnough(score: number): boolean {
   return score >= SCORE_THRESHOLD;
 }
 
+/**
+ * Whether the user can reach it. With a modal open, the page behind it is marked aria-hidden or
+ * inert, and may hold a button with the same name as the dialog's own, like a page's **Add
+ * suggestion** behind the dialog's **Add suggestion**. Anything inert is out of reach too.
+ */
+function usable(el: Element): boolean {
+  if (el.closest('[inert]')) return false;
+  return !modalOpen() || !el.closest('[aria-hidden="true"]');
+}
+
+function modalOpen(): boolean {
+  if (document.querySelector('[role="dialog"][aria-modal="true"], [role="alertdialog"][aria-modal="true"]')) return true;
+  try {
+    return !!document.querySelector('dialog:modal');
+  } catch {
+    return false;
+  }
+}
+
+/** The first element for a selector that the user can reach. */
+function first(selector: string): Element | null {
+  return Array.from(document.querySelectorAll(selector)).find(usable) ?? null;
+}
+
 function findByLocator(loc: Locator): Element | null {
   try {
     switch (loc.type) {
@@ -48,9 +72,9 @@ function findByLocator(loc: Locator): Element | null {
       }
       case 'testid':
         return (
-          document.querySelector(`[data-testid="${CSS.escape(loc.value)}"]`) ??
-          document.querySelector(`[data-cy="${CSS.escape(loc.value)}"]`) ??
-          document.querySelector(`[data-test="${CSS.escape(loc.value)}"]`)
+          first(`[data-testid="${CSS.escape(loc.value)}"]`) ??
+          first(`[data-cy="${CSS.escape(loc.value)}"]`) ??
+          first(`[data-test="${CSS.escape(loc.value)}"]`)
         );
       case 'text':
         return findByText(loc.value);
@@ -61,10 +85,10 @@ function findByLocator(loc: Locator): Element | null {
         const attr = loc.value.slice(0, eqIdx);
         const val = loc.value.slice(eqIdx + 1);
         if (attr === 'href') return findByDestination(val);
-        return document.querySelector(`[${CSS.escape(attr)}="${CSS.escape(val)}"]`);
+        return first(`[${CSS.escape(attr)}="${CSS.escape(val)}"]`);
       }
       case 'css':
-        return document.querySelector(loc.value);
+        return first(loc.value);
       default:
         return null;
     }
@@ -92,6 +116,7 @@ function findByDestination(pattern: string): Element | null {
     }
     if (to.origin !== location.origin || !re(path).test(trim(to.pathname))) continue;
     if (hash && !re(`#${hash}`).test(trim(to.hash))) continue;
+    if (!usable(a)) continue;
     if (isVisible(a)) return a;
     hidden ??= a;
   }
@@ -100,12 +125,13 @@ function findByDestination(pattern: string): Element | null {
 
 function findByAriaRoleAndName(role: string, name: string): Element | null {
   // aria-label match
-  const byLabel = document.querySelector(`[role="${role}"][aria-label="${CSS.escape(name)}"]`);
+  const byLabel = first(`[role="${role}"][aria-label="${CSS.escape(name)}"]`);
   if (byLabel) return byLabel;
 
   // aria-labelledby match — look for elements whose referenced label contains the name
   const candidates = document.querySelectorAll(`[role="${role}"]`);
   for (const el of candidates) {
+    if (!usable(el)) continue;
     const computed = computedAriaLabel(el);
     if (computed.toLowerCase() === name.toLowerCase()) return el;
   }
@@ -123,6 +149,7 @@ function findByAriaRoleAndName(role: string, name: string): Element | null {
   if (selector) {
     const nativeCandidates = document.querySelectorAll(selector);
     for (const el of nativeCandidates) {
+      if (!usable(el)) continue;
       const computed = computedAriaLabel(el);
       if (computed.toLowerCase() === name.toLowerCase()) return el;
     }
@@ -196,7 +223,7 @@ function findByText(text: string): Element | null {
   while ((node = walker.nextNode())) {
     const el = node as HTMLElement;
     const elText = el.innerText?.trim().toLowerCase();
-    if (elText === normalised && isInteractiveLike(el)) return el;
+    if (elText === normalised && isInteractiveLike(el) && usable(el)) return el;
   }
   return null;
 }
