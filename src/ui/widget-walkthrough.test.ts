@@ -243,3 +243,14 @@ describe('a step with nothing to point at', () => {
     expect(missingQuestion('Scroll down a little.')).toBe("I can't find where to do this: Scroll down a little. Where is it?");
   });
 });
+
+describe('walkthrough ending', () => {
+  it('opens the panel short, so what the last step did stays in view, until they use it', () => {
+    const { widget, $ } = make();
+    widget.showEnding();
+    expect($('.sk-panel').hidden).toBe(false);
+    expect($('.sk-panel').classList.contains('sk-brief')).toBe(true);
+    $('.sk-panel').dispatchEvent(new Event('pointerdown'));
+    expect($('.sk-panel').classList.contains('sk-brief')).toBe(false);
+  });
+});

@@ -1,5 +1,5 @@
 import type { ShowPayload, ShowStep, SkavelEvent } from '../types';
-import { resolveLocator, isFreshEnough, findHidden } from '../core/locator';
+import { resolveLocator, isFreshEnough, findHidden, isVisible } from '../core/locator';
 import { menuButton, revealerOf, revealInstruction } from '../core/reveal';
 import { currentDevice } from '../core/targeting';
 import type { SessionStore } from '../core/session';
@@ -257,8 +257,8 @@ export function wayTo(pattern: string, hidden = false): { el: HTMLAnchorElement;
     if (!exact && !above) continue;
     // A link to the page they're on gets them nowhere, like the logo while on the home page.
     if (samePage(a.href, location.href)) continue;
-    const r = a.getBoundingClientRect();
-    const showing = r.width > 0 && r.height > 0 && getComputedStyle(a).visibility !== 'hidden';
+    // Includes a sidebar slid off the side of the screen on a phone.
+    const showing = isVisible(a);
     // hidden: only links that aren't showing, like the sidebar's on a phone, to find what opens them.
     if (showing === hidden) continue;
     const label = (a.getAttribute('aria-label') || a.textContent || a.title || '').replace(/\s+/g, ' ').trim();
@@ -301,6 +301,28 @@ function lowerFirst(text: string): string {
  * sign-in page when they're already signing up.
  */
 export function alreadyHere(steps: ShowStep[]): number {
+  return shortcut(steps, startHere(steps));
+}
+
+/**
+ * From where it would start, skips steps whose next step is a link already showing in the
+ * page's navigation, like "Click **All agents**." when the sidebar already links to the agent.
+ */
+function shortcut(steps: ShowStep[], from: number): number {
+  let i = from;
+  while (i < steps.length - 1) {
+    const { el, score } = resolveLocator(locatorsOf(steps[i + 1]));
+    const direct =
+      el instanceof HTMLAnchorElement && isFreshEnough(score) && isVisible(el) &&
+      !!el.closest('nav, aside, header, [role="navigation"], [role="banner"]') &&
+      !samePage(el.href, location.href);
+    if (!direct) break;
+    i += 1;
+  }
+  return i;
+}
+
+function startHere(steps: ShowStep[]): number {
   let i = 0;
   while (i < steps.length - 1) {
     const { el } = resolveLocator(locatorsOf(steps[i]));

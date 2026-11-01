@@ -750,8 +750,9 @@ export class SkavelInstance {
     this.unwatchTarget();
     this.highlight.hide();
     this.widget.clearStep();
-    // The last step may have been beside its control with the panel down; the ending shows in the panel.
-    this.widget.showView('panel', false);
+    // The last step may have been beside its control with the panel down; the ending shows in the
+    // panel, kept short so what the last step did stays in view.
+    this.widget.showEnding();
     // A replay ends on the message it was started from rather than adding another one.
     if (replayOf?.isConnected) {
       this.widget.revisit(replayOf);
@@ -826,14 +827,16 @@ export class SkavelInstance {
     if (!on) {
       this.mutationObserver?.disconnect();
       this.mutationObserver = null;
+      document.removeEventListener('transitionend', this.onSettled, true);
+      document.removeEventListener('animationend', this.onSettled, true);
       return;
     }
     if (this.mutationObserver || typeof MutationObserver === 'undefined') return;
-    this.mutationObserver = new MutationObserver(() => {
-      if (!this.showMode) return;
-      cancelAnimationFrame(this.frame);
-      this.frame = requestAnimationFrame(() => this.renderStep());
-    });
+    this.mutationObserver = new MutationObserver(this.onSettled);
+    // A drawer or menu that slides in changes nothing on the page when it arrives, so the step is
+    // checked again once it has finished moving too.
+    document.addEventListener('transitionend', this.onSettled, true);
+    document.addEventListener('animationend', this.onSettled, true);
     this.mutationObserver.observe(document.documentElement, {
       childList: true,
       subtree: true,
@@ -841,6 +844,12 @@ export class SkavelInstance {
       attributeFilter: ['class', 'hidden', 'style', 'aria-hidden', 'open'],
     });
   }
+
+  private onSettled = () => {
+    if (!this.showMode) return;
+    cancelAnimationFrame(this.frame);
+    this.frame = requestAnimationFrame(() => this.renderStep());
+  };
 
   private restoreSession() {
     const wt = this.session.getWalkthrough();

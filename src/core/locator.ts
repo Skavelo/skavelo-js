@@ -245,5 +245,19 @@ export function isVisible(el: Element): boolean {
   const style = window.getComputedStyle(htmlEl);
   if (style.display === 'none' || style.visibility === 'hidden') return false;
   const rect = htmlEl.getBoundingClientRect();
-  return rect.width > 0 && rect.height > 0;
+  if (!(rect.width > 0 && rect.height > 0)) return false;
+  // A phone layout's sidebar is often slid off the side of the screen rather than hidden, and only
+  // its menu button brings it back. Off to the side counts as hidden, unless scrolling sideways
+  // would reach it, like a tab strip or a wide table.
+  const offSide = rect.right <= 0 || rect.left >= window.innerWidth;
+  return !offSide || scrollsSideways(htmlEl);
+}
+
+function scrollsSideways(el: HTMLElement): boolean {
+  if (document.documentElement.scrollWidth > window.innerWidth) return true;
+  for (let node = el.parentElement; node && node !== document.body; node = node.parentElement) {
+    const { overflowX } = window.getComputedStyle(node);
+    if (/auto|scroll|overlay/.test(overflowX) && node.scrollWidth > node.clientWidth) return true;
+  }
+  return false;
 }

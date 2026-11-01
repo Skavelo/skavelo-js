@@ -160,6 +160,34 @@ describe('ShowMode.resolve on a phone', () => {
     expect(view?.bridge).toBe(true);
   });
 
+  it('points at the menu button when the sidebar is slid off the side of the screen', () => {
+    phone(true);
+    document.body.innerHTML = `<header><button aria-label="Open menu">☰</button></header><aside class="drawer"><a href="/billing">Billing</a></aside>`;
+    // The drawer is still laid out, just moved left of the screen with a transform.
+    Element.prototype.getBoundingClientRect = function (this: Element) {
+      const left = this.closest('.drawer') ? -208 : 0;
+      return { x: left, y: 0, left, top: 0, right: left + 195, bottom: 30, width: 195, height: 30, toJSON: () => ({}) } as DOMRect;
+    };
+    const view = settled([billing]).resolve();
+    expect(view?.el?.getAttribute('aria-label')).toBe('Open menu');
+    expect(view?.instruction).toBe('Open the menu first.');
+  });
+
+  it("still points at a control past the edge of a strip that scrolls sideways, like a phone's tab bar", () => {
+    phone(true);
+    document.body.innerHTML = `<header><button aria-label="Open menu">☰</button></header><div class="tabs" style="overflow-x: auto"><a href="/billing">Billing</a></div>`;
+    const tabs = document.querySelector('.tabs') as HTMLElement;
+    Object.defineProperty(tabs, 'scrollWidth', { value: 900 });
+    Object.defineProperty(tabs, 'clientWidth', { value: 390 });
+    Element.prototype.getBoundingClientRect = function (this: Element) {
+      const left = this.closest('.tabs') && this.tagName === 'A' ? window.innerWidth + 40 : 0;
+      return { x: left, y: 0, left, top: 0, right: left + 80, bottom: 30, width: 80, height: 30, toJSON: () => ({}) } as DOMRect;
+    };
+    const view = settled([billing]).resolve();
+    expect(view?.el?.getAttribute('href')).toBe('/billing');
+    expect(view?.bridge).toBeFalsy();
+  });
+
   it("points at the menu button when the menu's links aren't on the page yet, and only until it's opened", () => {
     phone(true);
     document.body.innerHTML = `<header><button class="menu-toggle"></button></header><main></main>`;
@@ -269,5 +297,28 @@ describe('pointing at the right control', () => {
       <a href="/agents" aria-label="Skavelo home">logo</a>
       <nav><a href="/agents">All agents</a><a href="/agents/2355-b1cf">Skavelo</a></nav>`;
     expect(wayTo('/agents/:id/targeting')?.label).toBe('Skavelo');
+  });
+});
+
+describe('alreadyHere shortcuts', () => {
+  it('skips a step when the next one is a link already showing in the navigation', () => {
+    history.replaceState(null, '', '/settings/team');
+    document.body.innerHTML = `<aside><a href="/agents">All agents</a><a href="/agents/42">Acme</a></aside>`;
+    const steps: ShowStep[] = [
+      { ...step('link', 'All agents'), pageUrlPattern: '/settings/team' },
+      { ...step('link', 'Acme'), pageUrlPattern: '/agents' },
+      { ...step('link', 'Appearance'), pageUrlPattern: '/agents/:id' },
+    ];
+    expect(alreadyHere(steps)).toBe(1);
+  });
+
+  it("keeps a step whose next link isn't showing yet, like one inside a menu it opens", () => {
+    history.replaceState(null, '', '/settings/team');
+    document.body.innerHTML = `<aside><a href="/agents">All agents</a></aside><main><a href="/agents/42" style="display:none">Acme</a></main>`;
+    const steps: ShowStep[] = [
+      { ...step('link', 'All agents'), pageUrlPattern: '/settings/team' },
+      { ...step('link', 'Acme'), pageUrlPattern: '/agents' },
+    ];
+    expect(alreadyHere(steps)).toBe(0);
   });
 });

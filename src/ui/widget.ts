@@ -236,6 +236,9 @@ const WIDGET_CSS = `
     height: min(720px, calc(100dvh - 48px));
     max-height: none;
   }
+  /* Right after a walkthrough: short, showing the ending, so what the last step did stays in view.
+     Full size again once they click or type in it. */
+  .sk-panel.sk-brief:not(.sk-expanded) { max-height: min(240px, 40vh); max-height: min(240px, 40dvh); }
   /* On a phone, a walkthrough step is a compact card at the bottom, so the page and the control it
      points at stay in view above it. */
   /* 639px: below CALLOUT_MIN_VIEWPORT, where steps show in the panel instead of beside the control.
@@ -926,6 +929,13 @@ export class Widget {
     } catch {}
 
     this.pill.addEventListener('click', () => this.open());
+    const unbrief = () => {
+      if (!this.panel.classList.contains('sk-brief')) return;
+      this.panel.classList.remove('sk-brief');
+      this.scrollToEnd();
+    };
+    this.panel.addEventListener('pointerdown', unbrief);
+    this.panel.addEventListener('focusin', unbrief);
     $('.sk-x').addEventListener('click', () => this.close());
     $('.sk-panel-close').addEventListener('click', () => this.close());
     $('.sk-composer-send').addEventListener('click', () => this.submit(this.composerInput));
@@ -1033,6 +1043,8 @@ export class Widget {
   private setView(view: View, focus = true) {
     // Closing the panel during an introduction counts as Not now.
     if (view !== 'panel' && this.introDone) this.answerIntro(false);
+    const opening = view === 'panel' && this.view !== 'panel';
+    if (view !== 'panel') this.panel.classList.remove('sk-brief');
     this.view = view;
     this.pill.hidden = view !== 'pill';
     this.composer.hidden = view !== 'composer';
@@ -1040,6 +1052,8 @@ export class Widget {
     // Opening the widget answers a nudge either way.
     if (view !== 'pill') { this.nudgeItem = null; clearTimeout(this.nudgeTimer); }
     this.renderSuggestions();
+    // Reopened, it shows the latest message, not wherever it was scrolled to while hidden.
+    if (opening && this.stepEl.hidden) requestAnimationFrame(() => this.scrollToEnd());
     // A preview inside the dashboard must never pull focus away from the settings form.
     if (this.preview || !focus) return;
     // On a phone, focusing raises the keyboard over the input bar at the bottom before it can be
@@ -1570,6 +1584,8 @@ export class Widget {
     if (!step || this.preview || !anchor?.isConnected || this.view !== 'panel' || this.calloutFits()) return;
     const r = anchor.getBoundingClientRect();
     if (!r.width && !r.height) return;
+    // Off the side of the screen, like a closed drawer: there's nothing to keep clear.
+    if (r.right <= 0 || r.left >= window.innerWidth) return;
     const p = this.panel.getBoundingClientRect();
     const gap = 12;
     if (r.bottom <= p.top - gap || r.top >= p.bottom + gap) return;
@@ -1855,6 +1871,13 @@ export class Widget {
   showView(view: View, focus = true) {
     if (view === 'panel') this.hasConversation = true;
     this.setView(view, focus);
+  }
+
+  /** Opens the panel short, on its last message, after a walkthrough ends. */
+  showEnding() {
+    this.showView('panel', false);
+    this.panel.classList.add('sk-brief');
+    requestAnimationFrame(() => this.scrollToEnd());
   }
 
   private looksDark(): boolean {
