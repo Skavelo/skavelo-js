@@ -236,9 +236,6 @@ const WIDGET_CSS = `
     height: min(720px, calc(100dvh - 48px));
     max-height: none;
   }
-  /* Right after a walkthrough: short, showing the ending, so what the last step did stays in view.
-     Full size again once they click or type in it. */
-  .sk-panel.sk-brief:not(.sk-expanded) { max-height: min(240px, 40vh); max-height: min(240px, 40dvh); }
   /* On a phone, a walkthrough step is a compact card at the bottom, so the page and the control it
      points at stay in view above it. */
   /* 639px: below CALLOUT_MIN_VIEWPORT, where steps show in the panel instead of beside the control.
@@ -929,13 +926,6 @@ export class Widget {
     } catch {}
 
     this.pill.addEventListener('click', () => this.open());
-    const unbrief = () => {
-      if (!this.panel.classList.contains('sk-brief')) return;
-      this.panel.classList.remove('sk-brief');
-      this.scrollToEnd();
-    };
-    this.panel.addEventListener('pointerdown', unbrief);
-    this.panel.addEventListener('focusin', unbrief);
     $('.sk-x').addEventListener('click', () => this.close());
     $('.sk-panel-close').addEventListener('click', () => this.close());
     $('.sk-composer-send').addEventListener('click', () => this.submit(this.composerInput));
@@ -1044,7 +1034,6 @@ export class Widget {
     // Closing the panel during an introduction counts as Not now.
     if (view !== 'panel' && this.introDone) this.answerIntro(false);
     const opening = view === 'panel' && this.view !== 'panel';
-    if (view !== 'panel') this.panel.classList.remove('sk-brief');
     this.view = view;
     this.pill.hidden = view !== 'pill';
     this.composer.hidden = view !== 'composer';
@@ -1879,10 +1868,9 @@ export class Widget {
     return r.width ? { x: r.left + r.width / 2, y: r.top } : null;
   }
 
-  /** Opens the panel short, on its last message, after a walkthrough ends. */
+  /** Opens the panel on its last message after a walkthrough ends. */
   showEnding() {
     this.showView('panel', false);
-    this.panel.classList.add('sk-brief');
     requestAnimationFrame(() => this.scrollToEnd());
   }
 

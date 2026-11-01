@@ -801,8 +801,7 @@ export class SkavelInstance {
     this.highlight.hide();
     this.hideCursor();
     this.widget.clearStep();
-    // The last step may have been beside its control with the panel down; the ending shows in the
-    // panel, kept short so what the last step did stays in view.
+    // The last step may have been beside its control with the panel down; the ending shows in the panel.
     this.widget.showEnding();
     // A replay ends on the message it was started from rather than adding another one.
     if (replayOf?.isConnected) {

@@ -90,6 +90,12 @@ export class ShowMode {
       && !el?.closest('a[href], nav, header, aside, [role="navigation"], [role="banner"]');
     const found = !!el && isFreshEnough(score) && !elsewhere;
 
+    // The control is a sidebar or top bar link that a phone layout keeps behind its menu: open the
+    // menu, rather than going to the page the step was recorded on. Those links work from any page.
+    const navHidden = found ? null : findHidden(locatorsOf(step));
+    const navReveal = navHidden?.closest('nav, aside, header, [role="navigation"], [role="banner"]') ? revealerOf(navHidden) : null;
+    if (navReveal) return this.revealView(step, navReveal);
+
     // The step belongs on another page: point at a link that goes there first.
     const way = !found && step.pageUrlPattern && !onPage(step.pageUrlPattern) ? wayTo(step.pageUrlPattern) : null;
     if (way) {
@@ -108,18 +114,7 @@ export class ShowMode {
     // Waits like a lead: right after a step is reached, its control may still be on its way in.
     const tucked = found || this.msUntilLead() > 0 ? null : this.hiddenTarget(step);
     const reveal = tucked ? revealerOf(tucked) : null;
-    if (reveal) {
-      this.emit({ type: 'step', stepIndex: this.stepIndex, stepInstruction: step.instruction, elementFound: true });
-      return {
-        instruction: revealInstruction(reveal.label),
-        ...(step.title ? { heading: step.title } : {}),
-        details: `Then ${lowerFirst(step.instruction)}`,
-        stepIndex: this.stepIndex,
-        total: this.payload.steps.length,
-        el: reveal.el,
-        bridge: true,
-      };
-    }
+    if (reveal) return this.revealView(step, reveal);
 
     // On the right page, but the control is behind something an earlier step opens.
     const lead = !found && this.msUntilLead() === 0 ? this.wayIn() : null;
@@ -176,6 +171,20 @@ export class ShowMode {
   }
 
   /** The step's control hidden on this page, or, for a step on another page, a hidden link there. */
+  /** Points at the button that shows a hidden control, then tells them the step itself. */
+  private revealView(step: ShowStep, reveal: { el: Element; label: string }): StepView {
+    this.emit({ type: 'step', stepIndex: this.stepIndex, stepInstruction: step.instruction, elementFound: true });
+    return {
+      instruction: revealInstruction(reveal.label),
+      ...(step.title ? { heading: step.title } : {}),
+      details: `Then ${lowerFirst(step.instruction)}`,
+      stepIndex: this.stepIndex,
+      total: this.payload.steps.length,
+      el: reveal.el,
+      bridge: true,
+    };
+  }
+
   private hiddenTarget(step: ShowStep): Element | null {
     if (step.pageUrlPattern && !onPage(step.pageUrlPattern)) return wayTo(step.pageUrlPattern, true)?.el ?? null;
     return findHidden(locatorsOf(step));

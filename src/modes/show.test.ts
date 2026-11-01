@@ -173,6 +173,21 @@ describe('ShowMode.resolve on a phone', () => {
     expect(view?.instruction).toBe('Open the menu first.');
   });
 
+  it("opens the menu for a sidebar link, instead of going to the page the step was recorded on", () => {
+    phone(true);
+    history.replaceState(null, '', '/agents/42/learning');
+    // Learning recorded Team on the API keys page; this page also links there, from a report.
+    document.body.innerHTML = `<header><button aria-label="Open menu">☰</button></header><aside class="drawer"><a href="/settings/team">Team</a></aside><main><a href="/settings/api-keys">API keys · Skavelo</a></main>`;
+    Element.prototype.getBoundingClientRect = function (this: Element) {
+      const left = this.closest('.drawer') ? -208 : 0;
+      return { x: left, y: 0, left, top: 0, right: left + 195, bottom: 30, width: 195, height: 30, toJSON: () => ({}) } as DOMRect;
+    };
+    const team: ShowStep = { ...step('link', 'Team'), pageUrlPattern: '/settings/api-keys' };
+    const view = settled([team]).resolve();
+    expect(view?.el?.getAttribute('aria-label')).toBe('Open menu');
+    expect(view?.instruction).toBe('Open the menu first.');
+  });
+
   it("still points at a control past the edge of a strip that scrolls sideways, like a phone's tab bar", () => {
     phone(true);
     document.body.innerHTML = `<header><button aria-label="Open menu">☰</button></header><div class="tabs" style="overflow-x: auto"><a href="/billing">Billing</a></div>`;

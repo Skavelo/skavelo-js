@@ -245,12 +245,10 @@ describe('a step with nothing to point at', () => {
 });
 
 describe('walkthrough ending', () => {
-  it('opens the panel short, so what the last step did stays in view, until they use it', () => {
+  it('opens the panel at its usual size', () => {
     const { widget, $ } = make();
     widget.showEnding();
     expect($('.sk-panel').hidden).toBe(false);
-    expect($('.sk-panel').classList.contains('sk-brief')).toBe(true);
-    $('.sk-panel').dispatchEvent(new Event('pointerdown'));
-    expect($('.sk-panel').classList.contains('sk-brief')).toBe(false);
+    expect($('.sk-panel').className).not.toContain('sk-brief');
   });
 });
