@@ -13,9 +13,13 @@ function labelOf(el: Element): string {
   return `${own} ${value}`.replace(/\s+/g, ' ').trim();
 }
 
-/** A click that only moves somewhere or opens something: a link, tab, menu or a button like "New invoice". */
-export function canClickFor(el: Element): boolean {
-  if (CHANGES.test(labelOf(el))) return false;
+/**
+ * A click that only moves somewhere or opens something: a link, tab, menu or a button like "New
+ * invoice". opens: learning saw the control open a dialog, menu, tab or panel, so a label like
+ * "Invite" that would otherwise read as a change only opens its form. Submit buttons never pass.
+ */
+export function canClickFor(el: Element, opts: { opens?: boolean } = {}): boolean {
+  if (CHANGES.test(labelOf(el)) && !opts.opens) return false;
   if (el instanceof HTMLInputElement && el.type === 'submit') return false;
   if (el instanceof HTMLButtonElement && el.type === 'submit' && el.form) return false;
   if (el.matches('input, select, textarea')) return false;
@@ -54,6 +58,36 @@ export function fillField(el: Element, value: string): boolean {
     return type(el, HTMLSelectElement.prototype, match.value);
   }
   return false;
+}
+
+const TEXT_TYPES = new Set(['text', 'email', 'search', 'tel', 'url', 'number', '']);
+
+/**
+ * Like fillField, but text is entered a few characters at a time so the visitor can watch it
+ * being typed, each step firing input like real typing. Takes under a second whatever the length.
+ * Dropdowns, checkboxes and dates change in one go. Stops when the field leaves the page.
+ */
+export async function typeField(el: Element, value: string, opts: { instant?: boolean } = {}): Promise<boolean> {
+  const text =
+    (el instanceof HTMLInputElement && TEXT_TYPES.has(el.type) && !el.disabled && !el.readOnly) ||
+    (el instanceof HTMLTextAreaElement && !el.disabled && !el.readOnly);
+  if (!text || opts.instant || value.length < 2) return fillField(el, value);
+  const field = el as HTMLInputElement | HTMLTextAreaElement;
+  const proto = field instanceof HTMLInputElement ? HTMLInputElement.prototype : HTMLTextAreaElement.prototype;
+  const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
+  const set = (v: string) => (setter ? setter.call(field, v) : (field.value = v));
+  field.focus();
+  // About 30 updates at most, so a long value takes the same short time as a few words.
+  const chunk = Math.max(1, Math.ceil(value.length / 30));
+  const pause = Math.min(45, Math.max(14, Math.round(800 / Math.ceil(value.length / chunk))));
+  for (let i = chunk; i < value.length + chunk; i += chunk) {
+    if (!field.isConnected) return false;
+    set(value.slice(0, Math.min(i, value.length)));
+    field.dispatchEvent(new Event('input', { bubbles: true }));
+    await new Promise((r) => window.setTimeout(r, pause));
+  }
+  field.dispatchEvent(new Event('change', { bubbles: true }));
+  return true;
 }
 
 function type(el: HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement, proto: object, value: string): boolean {

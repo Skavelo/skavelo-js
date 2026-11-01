@@ -1,5 +1,6 @@
 import { Widget, type AppliedTheme } from './ui/widget';
 import { HighlightOverlay } from './ui/highlight';
+import { GhostCursor } from './ui/ghost-cursor';
 
 export type PreviewView = 'launcher' | 'input' | 'chat' | 'walkthrough';
 
@@ -28,11 +29,16 @@ export function mountPreview(container: HTMLElement, theme: AppliedTheme, option
   let widget: Widget | null = null;
   let current = { theme, options };
   const highlight = new HighlightOverlay(root, theme.accent, { contained: true });
+  const cursor = new GhostCursor(root, { contained: true });
+  const themeCursor = (t: AppliedTheme) =>
+    cursor.setTheme({ accent: t.accent, label: t.title || 'Skavelo', enabled: t.cursor !== false });
   const target = () => container.querySelector('[data-sk-preview-target]');
 
   const render = () => {
     widget?.destroy();
     highlight.hide();
+    cursor.hide();
+    themeCursor(current.theme);
     highlight.setTheme({ accent: current.theme.accent, highlight: current.theme.highlight ?? 'beacon' });
     widget = new Widget(root, { ...current.theme, branding: current.options.branding }, {
       onAsk: noop, onStop: noop, onOpen: noop, onClose: noop,
@@ -65,7 +71,12 @@ export function mountPreview(container: HTMLElement, theme: AppliedTheme, option
           total: 3,
           found: true,
         });
-        { const el = target(); if (el) highlight.point(el); }
+        {
+          const el = target();
+          // With the guide cursor on, it glides in from the launcher and the highlight follows.
+          if (el && cursor.isOn()) void cursor.moveTo(el).then((arrived) => { if (arrived) { highlight.point(el); cursor.rest(); } });
+          else if (el) highlight.point(el);
+        }
         break;
     }
   };
@@ -74,18 +85,22 @@ export function mountPreview(container: HTMLElement, theme: AppliedTheme, option
 
   return {
     update(theme: AppliedTheme, options: PreviewOptions) {
-      const viewChanged = options.view !== current.options.view || options.scheme !== current.options.scheme;
+      // Switching the cursor on or off plays the walkthrough view again, so the change shows.
+      const cursorChanged = options.view === 'walkthrough' && (theme.cursor !== false) !== (current.theme.cursor !== false);
+      const viewChanged = cursorChanged || options.view !== current.options.view || options.scheme !== current.options.scheme;
       current = { theme, options };
       if (viewChanged || !widget) render();
       else {
         widget.applyTheme({ ...theme, branding: options.branding });
         // A new style rebuilds the highlight, so its entrance plays again.
         highlight.setTheme({ accent: theme.accent, highlight: theme.highlight ?? 'beacon' });
+        themeCursor(theme);
         widget.setSuggestions(options.view === 'input' || options.view === 'launcher' ? titles(options) : []);
       }
     },
     destroy() {
       highlight.destroy();
+      cursor.destroy();
       widget?.destroy();
       host.remove();
     },

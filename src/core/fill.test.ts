@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { describe, expect, it, vi } from 'vitest';
-import { canClickFor, checkThen, fillField } from './fill';
+import { canClickFor, checkThen, fillField, typeField } from './fill';
 
 const html = (markup: string) => {
   document.body.innerHTML = markup;
@@ -72,4 +72,44 @@ describe('canClickFor', () => {
 
 it('turns the last instruction into a check', () => {
   expect(checkThen('Click **Send invoice**.')).toBe('Check the details, then click **Send invoice**.');
+});
+
+describe('typeField', () => {
+  it('types a little at a time, the way the visitor would, and finishes the step once', async () => {
+    const input = html('<input type="text">') as HTMLInputElement;
+    const seen: string[] = [];
+    let changes = 0;
+    input.addEventListener('input', () => seen.push(input.value));
+    input.addEventListener('change', () => changes++);
+    expect(await typeField(input, 'Ada Lovelace')).toBe(true);
+    expect(input.value).toBe('Ada Lovelace');
+    expect(seen.length).toBeGreaterThan(3);
+    expect(seen[0].length).toBeLessThan('Ada Lovelace'.length);
+    expect(changes).toBe(1);
+  });
+
+  it('enters it in one go when asked, and for dropdowns', async () => {
+    const input = html('<input type="text">') as HTMLInputElement;
+    let inputs = 0;
+    input.addEventListener('input', () => inputs++);
+    await typeField(input, 'Ada Lovelace', { instant: true });
+    expect(inputs).toBe(1);
+    const select = html('<select><option value="m">Member</option><option value="a">Admin</option></select>') as HTMLSelectElement;
+    expect(await typeField(select, 'Admin')).toBe(true);
+    expect(select.value).toBe('a');
+  });
+
+  it("stops when the field leaves the page", async () => {
+    const input = html('<input type="text">') as HTMLInputElement;
+    input.addEventListener('input', () => input.remove());
+    expect(await typeField(input, 'a long value to type')).toBe(false);
+  });
+});
+
+describe('canClickFor a control learning saw open something', () => {
+  it('presses an Invite button that opens the invite form, but never a submit button', () => {
+    expect(canClickFor(html('<button type="button">Invite</button>'))).toBe(false);
+    expect(canClickFor(html('<button type="button">Invite</button>'), { opens: true })).toBe(true);
+    expect(canClickFor(html('<form><button type="submit">Send invite</button></form>').querySelector('button')!, { opens: true })).toBe(false);
+  });
 });

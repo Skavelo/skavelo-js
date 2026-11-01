@@ -14,7 +14,8 @@ import type {
 } from './types';
 import { DEFAULT_API_URL, NetworkClient, Refused, StreamUnavailable } from './core/network';
 import { runAction, runLookup } from './core/actions';
-import { canClickFor, checkThen, fillField } from './core/fill';
+import { canClickFor, checkThen, typeField } from './core/fill';
+import { GhostCursor } from './ui/ghost-cursor';
 import { StuckWatcher, helpFor, type StuckSignal } from './core/stuck';
 import { takePendingUser } from './core/pending-user';
 import { currentDevice, matchesTargeting, suggestionsFor, visitorBucket, watchUrl, type VisitContext } from './core/targeting';
@@ -78,6 +79,11 @@ export class SkavelInstance {
   private session: SessionStore;
   private shadowHost: ShadowHost;
   private highlight: HighlightOverlay;
+  private cursor: GhostCursor;
+  /** The control the guide cursor is going to or resting on, and whether it has got there. */
+  private cursorFor: Element | null = null;
+  private cursorLanded = false;
+  private landing: Promise<boolean> = Promise.resolve(true);
   private widget: Widget;
   private showMode: ShowMode | null = null;
   private inFlight: AbortController | null = null;
@@ -109,6 +115,8 @@ export class SkavelInstance {
 
     this.highlight = new HighlightOverlay(root, cfg.theme?.accent);
     this.highlight.setTheme({ accent: cfg.theme?.accent, highlight: cfg.theme?.highlight });
+    this.cursor = new GhostCursor(root, { origin: () => this.widget?.originPoint() ?? null });
+    this.cursor.setTheme({ accent: cfg.theme?.accent, label: cfg.theme?.title, enabled: cfg.theme?.cursor !== false });
     this.widget = new Widget(root, cfg.theme, {
       onAsk: (q, suggestionId) => this.runAsk(q, suggestionId),
       onStop: () => this.inFlight?.abort(),
@@ -210,6 +218,7 @@ export class SkavelInstance {
     this.widget.applyTheme({ title: remote.name, ...theme, branding: remote.branding });
     // The dashboard's accent and style reach the highlight too, not only what's set in code.
     this.highlight.setTheme({ accent: theme.accent, highlight: theme.highlight ?? 'beacon' });
+    this.cursor.setTheme({ accent: theme.accent, label: theme.title ?? remote.name, enabled: theme.cursor !== false });
     this.applyTargeting();
     this.widget.setReady(true);
   }
@@ -389,6 +398,7 @@ export class SkavelInstance {
     cancelAnimationFrame(this.frame);
     this.mutationObserver?.disconnect();
     this.highlight.destroy();
+    this.cursor.destroy();
     this.widget.destroy();
     this.shadowHost.destroy();
     // Let a later init() start fresh (React runs effects twice in development).
@@ -657,13 +667,16 @@ export class SkavelInstance {
     const view = this.showMode.resolve();
     if (!view) return;
 
+    const filling = !!this.showMode.payload.fill && !this.autoPaused;
     if (view.el) {
-      this.highlight.point(view.el);
+      this.pointAt(view.el, filling);
       // A link to the step's page doesn't finish the step; the page it opens shows the step again.
       if (view.bridge) this.unwatchTarget();
       else this.watchTarget(view.el);
     } else {
       this.highlight.hide();
+      this.cursorFor = null;
+      this.cursor.rest();
       this.unwatchTarget();
       // The control may be behind something an earlier step opens; look again once the wait is over.
       const wait = this.showMode.msUntilLead();
@@ -673,11 +686,11 @@ export class SkavelInstance {
       }
     }
 
-    const filling = !!this.showMode.payload.fill && !this.autoPaused;
     const last = view.stepIndex === view.total - 1;
     this.widget.showStep({
       title: this.showMode.title,
-      instruction: filling && last ? checkThen(view.instruction) : view.instruction,
+      // On the final button only; a hint on the way there, like "Open **Team** first.", stays as it is.
+      instruction: filling && last && !view.bridge ? checkThen(view.instruction) : view.instruction,
       heading: view.heading,
       details: view.details,
       stepIndex: view.stepIndex,
@@ -687,6 +700,33 @@ export class SkavelInstance {
       pending: !view.el && this.showMode.msUntilLead() > 0,
     });
     if (filling && view.el) this.doStepFor(view.el, view.stepIndex, last);
+  }
+
+  /**
+   * Marks the step's control. With the guide cursor, the cursor glides there first and the
+   * highlight appears where it lands; in a guided walkthrough it then fades, so the click is the
+   * visitor's. Without it (switched off, or a touch screen) the highlight shows straight away.
+   */
+  private pointAt(el: Element, filling: boolean) {
+    if (!this.cursor.isOn()) {
+      this.highlight.point(el);
+      return;
+    }
+    if (el !== this.cursorFor) {
+      this.cursorFor = el;
+      this.cursorLanded = false;
+      this.highlight.hide();
+      this.landing = this.cursor.moveTo(el).then((arrived) => {
+        if (!arrived || this.cursorFor !== el || !this.showMode) return false;
+        this.cursorLanded = true;
+        this.highlight.point(el);
+        if (!filling) this.cursor.rest();
+        return true;
+      });
+      return;
+    }
+    // Following the same control as the page changes; nothing to draw while it's still on its way.
+    if (this.cursorLanded) this.highlight.point(el);
   }
 
   /**
@@ -700,19 +740,29 @@ export class SkavelInstance {
     const step = this.showMode?.currentStep();
     if (!step) return;
     const isField = el.matches('input, select, textarea');
-    if (isField ? step.value === undefined : !canClickFor(el)) return;
+    if (isField ? step.value === undefined : !canClickFor(el, { opens: !!step.opens })) return;
     this.autoStep = stepIndex;
     clearTimeout(this.autoTimer);
-    this.autoTimer = window.setTimeout(() => {
-      // Only if nothing moved on in the meantime.
-      if (!this.showMode || this.autoPaused || this.showMode.currentStep() !== step || !el.isConnected) return;
+    const guided = this.cursor.isOn();
+    // With the cursor: once it's on the control, a beat to see where it is, then the press.
+    // Without it: a moment so the visitor can see what's about to happen.
+    const ready = guided
+      ? this.landing.then((ok) => ok && new Promise<boolean>((r) => { this.autoTimer = window.setTimeout(() => r(true), 250); }))
+      : new Promise<boolean>((r) => { this.autoTimer = window.setTimeout(() => r(true), isField ? 450 : 650); });
+    // Only if nothing moved on in the meantime.
+    const current = () => !!this.showMode && !this.autoPaused && this.showMode.currentStep() === step && el.isConnected;
+    void ready.then(async (ok) => {
+      if (!ok || !current()) return;
+      await this.cursor.press();
+      if (!current()) return;
       if (isField) {
         // A field it can't fill (a custom dropdown, an option that isn't there) is left for the visitor.
-        fillField(el, step.value!);
+        // Typed where they can watch it with the cursor; entered in one go without.
+        await typeField(el, step.value!, { instant: !guided });
       } else {
         (el as HTMLElement).click();
       }
-    }, isField ? 450 : 650);
+    });
   }
 
   private advanceStep() {
@@ -749,6 +799,7 @@ export class SkavelInstance {
     this.watchPage(false);
     this.unwatchTarget();
     this.highlight.hide();
+    this.hideCursor();
     this.widget.clearStep();
     // The last step may have been beside its control with the panel down; the ending shows in the
     // panel, kept short so what the last step did stays in view.
@@ -788,7 +839,14 @@ export class SkavelInstance {
     this.applyTargeting();
     this.unwatchTarget();
     this.highlight.hide();
+    this.hideCursor();
     this.widget.clearStep();
+  }
+
+  private hideCursor() {
+    this.cursor.hide();
+    this.cursorFor = null;
+    this.cursorLanded = false;
   }
 
   // Doing the highlighted thing counts as finishing the step. The step index is

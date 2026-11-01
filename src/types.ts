@@ -91,6 +91,12 @@ export interface ThemeCfg {
   highlight?: HighlightStyle;
   /** The accent edge and glow on the launcher, input bar and suggestions. Default true; false gives a plain shadow. */
   glow?: boolean;
+  /**
+   * The guide cursor: an arrow labelled with the assistant's name that glides to each walkthrough
+   * step's control and, in Do it for me, presses and types for the visitor. Default true; false
+   * switches it off. Touch screens never show it, and with reduced motion it appears without gliding.
+   */
+  cursor?: boolean;
   /** Widget position on screen. Default "bottom-center". */
   position?: "bottom-center" | "bottom-right" | "bottom-left";
   /** Launcher text. Default "Get help". With launcher "icon" it isn't shown, but screen readers still announce it. */
@@ -233,6 +239,11 @@ export interface ShowStep {
   pageUrlPattern?: string;
   /** With fill: what to enter in this field, from the visitor's own words. */
   value?: string;
+  /**
+   * Learning saw this control open a dialog, menu, tab or panel, like an Invite button that opens
+   * the invite form. With fill it may be pressed for the visitor whatever its label says.
+   */
+  opens?: 'dialog' | 'menu' | 'tab' | 'panel';
 }
 
 export interface Locator {

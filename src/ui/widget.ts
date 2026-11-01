@@ -1873,6 +1873,12 @@ export class Widget {
     this.setView(view, focus);
   }
 
+  /** Where the guide cursor sets off from: the top of the launcher or input bar, on screen. */
+  originPoint(): { x: number; y: number } | null {
+    const r = this.dock.getBoundingClientRect();
+    return r.width ? { x: r.left + r.width / 2, y: r.top } : null;
+  }
+
   /** Opens the panel short, on its last message, after a walkthrough ends. */
   showEnding() {
     this.showView('panel', false);
