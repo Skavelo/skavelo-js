@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { beforeEach, describe, expect, it } from 'vitest';
-import { menuButton, revealerOf, revealInstruction } from './reveal';
+import { menuButton, revealerOf, revealInstruction, setKnownMenus } from './reveal';
 
 // happy-dom has no layout: anything inside a hidden box has no size, the rest is visible.
 beforeEach(() => {
@@ -68,5 +68,34 @@ describe('revealInstruction', () => {
     expect(revealInstruction('Account')).toBe('Open **Account** first.');
     expect(revealInstruction('Toggle navigation')).toBe('Open the menu first.');
     expect(revealInstruction('')).toBe('Open the menu first.');
+  });
+});
+
+describe('the menu button learning recorded', () => {
+  const page = `
+    <header><button class="icon" aria-expanded="false"><svg></svg></button><button aria-label="Open menu">☰</button></header>
+    <div class="shell"><aside hidden><a href="/billing">Billing</a></aside><main><button aria-expanded="false">Try it</button></main></div>`;
+  const recorded = [{ locators: [{ type: 'css' as const, value: 'header > button:nth-of-type(1)', score: 0.6 }] }];
+
+  it('is used before any guess, even one named like a menu', () => {
+    document.body.innerHTML = page;
+    setKnownMenus(recorded);
+    expect(revealerOf(billing())?.el.className).toBe('icon');
+    expect(menuButton()?.el.className).toBe('icon');
+    setKnownMenus(undefined);
+  });
+
+  it('gives way to a button the site marked itself', () => {
+    document.body.innerHTML = page.replace('<button aria-label="Open menu">', '<button aria-label="Open menu" data-sk-menu>');
+    setKnownMenus(recorded);
+    expect(revealerOf(billing())?.el.getAttribute('aria-label')).toBe('Open menu');
+    setKnownMenus(undefined);
+  });
+
+  it("falls back to the usual checks when it isn't on this page", () => {
+    document.body.innerHTML = page;
+    setKnownMenus([{ locators: [{ type: 'css' as const, value: '#gone', score: 0.85 }] }]);
+    expect(revealerOf(billing())?.el.getAttribute('aria-label')).toBe('Open menu');
+    setKnownMenus(undefined);
   });
 });

@@ -188,6 +188,38 @@ describe('ShowMode.resolve on a phone', () => {
     expect(view?.instruction).toBe('Open the menu first.');
   });
 
+  it("opens the menu, not a dropdown in the page, for a link in the hidden sidebar", () => {
+    phone(true);
+    history.replaceState(null, '', '/agents/42/learning');
+    // Like the dashboard: the drawer and the page content share a parent, and the content has a
+    // closed dropdown of its own.
+    document.body.innerHTML = `<div class="app"><header><button aria-label="Open menu" aria-expanded="false">☰</button></header><div class="shell"><aside class="drawer"><a href="/settings/team">Team</a></aside><main><button aria-expanded="false" aria-haspopup="menu">Try it</button><a href="/settings/api-keys">API keys</a></main></div></div>`;
+    Element.prototype.getBoundingClientRect = function (this: Element) {
+      const left = this.closest('.drawer') ? -208 : 0;
+      return { x: left, y: 0, left, top: 0, right: left + 195, bottom: 30, width: 195, height: 30, toJSON: () => ({}) } as DOMRect;
+    };
+    const team: ShowStep = { ...step('link', 'Team'), pageUrlPattern: '/settings/api-keys' };
+    const view = settled([team]).resolve();
+    expect(view?.el?.getAttribute('aria-label')).toBe('Open menu');
+  });
+
+  it("notes a phone step stuck behind a menu nothing could open, and only on a phone", () => {
+    document.body.innerHTML = `<aside class="drawer"><a href="/settings/team">Team</a></aside><main><h1>Agents</h1></main>`;
+    Element.prototype.getBoundingClientRect = function (this: Element) {
+      const left = this.closest('.drawer') ? -208 : 0;
+      return { x: left, y: 0, left, top: 0, right: left + 195, bottom: 30, width: 195, height: 30, toJSON: () => ({}) } as DOMRect;
+    };
+    const team: ShowStep = { ...step('link', 'Team'), pageUrlPattern: '/' };
+    phone(true);
+    const mode = settled([team]);
+    mode.resolve();
+    expect(mode.menuMissingAt).toBe(0);
+    phone(false);
+    const desk = settled([team]);
+    desk.resolve();
+    expect(desk.menuMissingAt).toBe(-1);
+  });
+
   it("still points at a control past the edge of a strip that scrolls sideways, like a phone's tab bar", () => {
     phone(true);
     document.body.innerHTML = `<header><button aria-label="Open menu">☰</button></header><div class="tabs" style="overflow-x: auto"><a href="/billing">Billing</a></div>`;

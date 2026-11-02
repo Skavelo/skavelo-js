@@ -16,6 +16,7 @@ import { DEFAULT_API_URL, NetworkClient, Refused, StreamUnavailable } from './co
 import { runAction, runLookup } from './core/actions';
 import { canClickFor, checkThen, typeField } from './core/fill';
 import { GhostCursor } from './ui/ghost-cursor';
+import { setKnownMenus } from './core/reveal';
 import { StuckWatcher, helpFor, type StuckSignal } from './core/stuck';
 import { takePendingUser } from './core/pending-user';
 import { currentDevice, matchesTargeting, suggestionsFor, visitorBucket, watchUrl, type VisitContext } from './core/targeting';
@@ -213,6 +214,7 @@ export class SkavelInstance {
 
   private applyRemote(remote: RemoteConfig) {
     this.remote = remote;
+    setKnownMenus(remote.menus);
     this.watchForStuck();
     const theme = { ...remote.appearance, ...setOnly(this.cfg.theme) };
     this.widget.applyTheme({ title: remote.name, ...theme, branding: remote.branding });
@@ -831,7 +833,9 @@ export class SkavelInstance {
     this.replayOf = null;
     const messageId = this.showMode?.messageId;
     const atStep = this.showMode?.stepIndexNow;
-    if (messageId) this.net.walkthroughResult({ messageId, outcome: 'abandoned', atStep }).catch(() => {});
+    // Stopped where a phone's menu couldn't be opened: the team sees it in Needs attention.
+    const stuck = atStep !== undefined && this.showMode?.menuMissingAt === atStep ? ('phone-menu' as const) : undefined;
+    if (messageId) this.net.walkthroughResult({ messageId, outcome: 'abandoned', atStep, ...(stuck ? { stuck } : {}) }).catch(() => {});
     this.showMode?.abandon();
     this.showMode = null;
     this.watchPage(false);

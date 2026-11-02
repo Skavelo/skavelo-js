@@ -1578,7 +1578,8 @@ export class Widget {
     const p = this.panel.getBoundingClientRect();
     const gap = 12;
     if (r.bottom <= p.top - gap || r.top >= p.bottom + gap) return;
-    if (!this.dockTop) {
+    // Scrolling the page doesn't move a control in a fixed menu drawer or a sticky bar; the card moves instead.
+    if (!this.dockTop && !staysPut(anchor)) {
       const delta = r.bottom - (p.top - gap * 2);
       const room = document.documentElement.scrollHeight - window.innerHeight - window.scrollY;
       if (delta > 0 && delta <= room && r.top - delta >= gap) {
@@ -1936,4 +1937,13 @@ export function calloutPlacement(
   const pick = options.find((o) => onScreen(o) && clear(o)) ?? options.find(onScreen);
   if (pick) return pick;
   return { top: clamp(a.bottom + GAP, EDGE, vh - h - EDGE), left: x, side: null, arrow: 0 };
+}
+
+/** In something fixed or sticky, like a phone's menu drawer: it stays where it is when the page scrolls. */
+function staysPut(el: Element): boolean {
+  for (let node: Element | null = el; node && node !== document.documentElement; node = node.parentElement) {
+    const { position } = window.getComputedStyle(node);
+    if (position === 'fixed' || position === 'sticky') return true;
+  }
+  return false;
 }

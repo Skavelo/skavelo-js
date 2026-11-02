@@ -1,9 +1,39 @@
-import { isVisible } from './locator';
+import { isFreshEnough, isVisible, resolveLocator } from './locator';
+import type { Locator } from '../types';
 
 // What menu buttons are called: "Menu", "Open menu", "Toggle navigation", "Show sidebar".
 const MENU = /\b(menu|navigation|nav|sidebar|drawer)\b/i;
 const NAV_AREA = 'nav, aside, header, [role="navigation"], [role="banner"], [role="dialog"]';
 const BUTTONS = 'button, [role="button"], summary, [aria-expanded]';
+
+/** The phone menu buttons learning recorded for this app, from the widget's settings. */
+let knownMenus: Locator[][] = [];
+
+export function setKnownMenus(menus: { locators: Locator[] }[] | undefined) {
+  knownMenus = (menus ?? []).map((m) => m.locators).filter((l) => l.length);
+}
+
+/**
+ * The menu button known for certain: one the site marked with data-sk-menu, then the one learning
+ * saw open the navigation at phone width. Only if it's on screen and closed.
+ */
+function exactMenu(target?: Element): { el: Element; label: string } | null {
+  const marked = Array.from(document.querySelectorAll('[data-sk-menu]')).find(
+    (b) => b.getAttribute('aria-expanded') !== 'true' && isVisible(b) && !(target && b.contains(target)),
+  );
+  return marked ? named(marked) : knownMenu(target);
+}
+
+/** A recorded menu button that's on screen and closed, if there is one. */
+function knownMenu(target?: Element): { el: Element; label: string } | null {
+  for (const locators of knownMenus) {
+    const { el, score } = resolveLocator(locators);
+    if (!el || !isFreshEnough(score)) continue;
+    if (el.getAttribute('aria-expanded') === 'true' || (target && el.contains(target))) continue;
+    if (isVisible(el)) return named(el);
+  }
+  return null;
+}
 
 /**
  * The visible button that shows a hidden control, like the menu button a phone layout puts the
@@ -25,17 +55,27 @@ export function revealerOf(target: Element): { el: Element; label: string } | nu
   const summary = details?.querySelector(':scope > summary');
   if (summary && isVisible(summary)) return named(summary);
 
-  // A closed toggle right beside it, like a dropdown's button next to its list.
+  // In the sidebar or top bar: the menu button the site marked, or the one learning saw open it.
+  if (target.closest(NAV_AREA)) {
+    const menu = exactMenu(target);
+    if (menu) return menu;
+  }
+
+  // A closed toggle right beside it, like a dropdown's button next to its list. Inside a sidebar or
+  // top bar the search stays there: a dropdown elsewhere on the page, like a "Try it" menu in the
+  // content, doesn't open the sidebar.
+  const area = target.closest(NAV_AREA);
   let near = target.parentElement;
   for (let depth = 0; near && near !== document.body && depth < 4; depth++, near = near.parentElement) {
     const toggle = Array.from(near.querySelectorAll('[aria-expanded="false"]')).find(
       (b) => isVisible(b) && !b.contains(target),
     );
     if (toggle) return named(toggle);
+    if (near === area) break;
   }
 
   // A sidebar or menu link: the page's menu button.
-  return target.closest(NAV_AREA) ? menuButton(target) : null;
+  return area ? menuButton(target) : null;
 }
 
 /**
@@ -43,11 +83,10 @@ export function revealerOf(target: Element): { el: Element; label: string } | nu
  * join the page once it opens, when there's nothing hidden to start from.
  */
 export function menuButton(target?: Element): { el: Element; label: string } | null {
+  const exact = exactMenu(target);
+  if (exact) return exact;
   const usable = (b: Element) =>
     b.getAttribute('aria-expanded') !== 'true' && isVisible(b) && !(target && b.contains(target));
-  // The site marked it: <button data-sk-menu>.
-  const marked = Array.from(document.querySelectorAll('[data-sk-menu]')).find(usable);
-  if (marked) return named(marked);
 
   const buttons = Array.from(document.querySelectorAll(BUTTONS)).filter(usable);
   for (const b of buttons) {

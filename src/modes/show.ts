@@ -93,7 +93,12 @@ export class ShowMode {
     // The control is a sidebar or top bar link that a phone layout keeps behind its menu: open the
     // menu, rather than going to the page the step was recorded on. Those links work from any page.
     const navHidden = found ? null : findHidden(locatorsOf(step));
-    const navReveal = navHidden?.closest('nav, aside, header, [role="navigation"], [role="banner"]') ? revealerOf(navHidden) : null;
+    const inNav = !!navHidden?.closest('nav, aside, header, [role="navigation"], [role="banner"]');
+    const navReveal = inNav ? revealerOf(navHidden!) : null;
+    // Hidden in a phone's navigation with nothing found to open it: if they give up here, the team
+    // hears about it in Needs attention.
+    if (inNav && !navReveal && currentDevice() === 'mobile') this.menuMissingAt = this.stepIndex;
+    else if (this.menuMissingAt === this.stepIndex) this.menuMissingAt = -1;
     if (navReveal) return this.revealView(step, navReveal);
 
     // The step belongs on another page: point at a link that goes there first.
@@ -208,6 +213,9 @@ export class ShowMode {
     }
     return null;
   }
+
+  /** The step at which a phone's hidden navigation couldn't be opened, or -1. */
+  menuMissingAt = -1;
 
   /** Returns false when the walkthrough just finished. */
   advance(): boolean {

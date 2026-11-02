@@ -341,6 +341,11 @@ export interface RemoteConfig {
   stuckHelp?: boolean;
   /** Walkthroughs offered before anyone asks. Older servers don't send it. */
   offers?: WalkthroughOffer[];
+  /**
+   * The buttons the app's phone layout puts its navigation behind, found by learning at phone
+   * width. On a phone, a step whose control is hidden there opens one of these first.
+   */
+  menus?: { locators: Locator[] }[];
 }
 
 /**

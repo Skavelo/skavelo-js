@@ -119,7 +119,7 @@ export class NetworkClient {
     return this.request<ShowPayload>('GET', `${SDK_ROUTES}/walkthroughs/${encodeURIComponent(workflowId)}`);
   }
 
-  async walkthroughResult(payload: { messageId: string; outcome: 'completed' | 'abandoned'; atStep?: number }): Promise<void> {
+  async walkthroughResult(payload: { messageId: string; outcome: 'completed' | 'abandoned'; atStep?: number; stuck?: 'phone-menu' }): Promise<void> {
     await this.request('POST', `${SDK_ROUTES}/walkthrough-result`, payload);
   }
 
