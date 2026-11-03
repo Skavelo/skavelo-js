@@ -33,6 +33,8 @@ import { findChatTool, openChatTool } from './core/chat-tools';
 import { collectPageSignals, watchRequests } from './core/signals';
 
 /** What visitors see when a limit or the allowed sites check stops an answer. */
+/** How long after a press for the page to catch up before the same control counts for the next step. */
+const SETTLE_MS = 1200;
 const UNAVAILABLE = "Help isn't available right now. Please try again later.";
 
 /** "Can I talk to someone?" and the like, as opposed to a question Skavelo couldn't answer. */
@@ -614,8 +616,11 @@ export class SkavelInstance {
   /** While a replay runs: the completion message it was started from. */
   private replayOf: HTMLElement | null = null;
 
-  /** With fill: the step Skavelo is about to do for the visitor, so it's done once. */
+  /** With fill: the step Skavelo is about to do for the visitor, and on which control, so it's done once. */
   private autoStep = -1;
+  private autoEl: Element | null = null;
+  /** When Skavelo last pressed a control for the visitor. */
+  private autoAt = 0;
   private autoTimer = 0;
   /** Set when the visitor steps back during a fill: from then on they're doing it themselves. */
   private autoPaused = false;
@@ -660,6 +665,7 @@ export class SkavelInstance {
     this.showMode = new ShowMode(payload, this.session, (e) => this.emit(e), opts);
     this.watchPage(true);
     this.autoStep = -1;
+    this.autoEl = null;
     this.autoPaused = false;
     this.renderStep();
   }
@@ -738,12 +744,24 @@ export class SkavelInstance {
    * and anything that saves, sends or deletes, waits for the visitor.
    */
   private doStepFor(el: Element, stepIndex: number, last: boolean) {
-    if (this.autoStep === stepIndex || last) return;
+    if (last || (this.autoStep === stepIndex && this.autoEl === el)) return;
     const step = this.showMode?.currentStep();
     if (!step) return;
+    // Just pressed, and the page hasn't caught up yet: a click on Team moves the walkthrough on
+    // while the old page, Team link and all, is still showing. Pressing it again would use up this
+    // step on the wrong control, so look again once the new page has had a moment to arrive.
+    const since = performance.now() - this.autoAt;
+    if (el === this.autoEl && since < SETTLE_MS) {
+      clearTimeout(this.autoTimer);
+      this.autoTimer = window.setTimeout(() => {
+        if (this.showMode?.currentStep() === step) this.renderStep();
+      }, SETTLE_MS - since);
+      return;
+    }
     const isField = el.matches('input, select, textarea');
     if (isField ? step.value === undefined : !canClickFor(el, { opens: !!step.opens })) return;
     this.autoStep = stepIndex;
+    this.autoEl = el;
     clearTimeout(this.autoTimer);
     const guided = this.cursor.isOn();
     // With the cursor: once it's on the control, a beat to see where it is, then the press.
@@ -757,6 +775,7 @@ export class SkavelInstance {
       if (!ok || !current()) return;
       await this.cursor.press();
       if (!current()) return;
+      this.autoAt = performance.now();
       if (isField) {
         // A field it can't fill (a custom dropdown, an option that isn't there) is left for the visitor.
         // Typed where they can watch it with the cursor; entered in one go without.

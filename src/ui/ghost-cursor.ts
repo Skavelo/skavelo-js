@@ -33,10 +33,11 @@ const CURSOR_CSS = `
   }
   .sk-gc-arrow { display: block; filter: drop-shadow(0 2px 4px rgba(0,0,0,.28)); }
   .sk-gc-arrow path { fill: var(--sk-gc-accent); stroke: #fff; stroke-width: 1.6; stroke-linejoin: round; }
+  /* Beside the arrow, level with its tip: below it is where the step card opens, which would cover it. */
   .sk-gc-label {
     position: absolute;
-    top: 20px;
-    left: 14px;
+    top: -6px;
+    left: 20px;
     max-width: 180px;
     padding: 3px 8px;
     border-radius: 7px;
