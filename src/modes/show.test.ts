@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { alreadyHere, forScreen, locatorsOf, onPage, ShowMode, wayTo } from './show';
 import type { SessionStore } from '../core/session';
 import type { ShowStep } from '../types';
@@ -65,6 +65,45 @@ describe('ShowMode.resolve', () => {
     history.replaceState(null, '', '/audience');
     const view = new ShowMode({ workflowId: 'w', steps: [onAutomations(step('link', 'Automations'))] }, session, () => {}).resolve();
     expect(view?.el?.textContent).toBe('Automations');
+  });
+
+  describe('right after following a step’s link', () => {
+    // Click Automations, then a button on the Automations page.
+    const steps = () => [{ ...step('link', 'Automations'), pageUrlPattern: '/audience' }, onAutomations(step('button', 'Journey actions'))];
+    beforeEach(() => {
+      vi.useFakeTimers();
+      history.replaceState(null, '', '/audience');
+      // The button is only on the Automations page.
+      document.querySelector('[aria-label="Journey actions"]')?.remove();
+    });
+    afterEach(() => vi.useRealTimers());
+
+    it('waits for the page instead of saying to open the link they just followed', () => {
+      const mode = new ShowMode({ workflowId: 'w', steps: steps() }, session, () => {});
+      mode.advance();
+      const view = mode.resolve();
+      expect(view?.instruction).toBe('Click **Journey actions**.');
+      expect(view?.el).toBeNull();
+      expect(view?.bridge).toBeUndefined();
+      expect(mode.msUntilRecheck()).toBeGreaterThan(1000);
+    });
+
+    it('points back at the link once the page has had time to change and still hasn’t', () => {
+      const mode = new ShowMode({ workflowId: 'w', steps: steps() }, session, () => {});
+      mode.advance();
+      mode.resolve();
+      vi.advanceTimersByTime(2600);
+      const view = mode.resolve();
+      expect(view?.instruction).toBe('Open **Automations** first.');
+      expect(mode.msUntilRecheck()).toBe(0);
+    });
+
+    it('says to open it straight away when they arrived at the step another way', () => {
+      // Started on this step, not by following its link just now.
+      const mode = new ShowMode({ workflowId: 'w', steps: steps() }, session, () => {}, { startAt: 1 });
+      vi.advanceTimersByTime(1100);
+      expect(mode.resolve()?.instruction).toBe('Open **Automations** first.');
+    });
   });
 });
 

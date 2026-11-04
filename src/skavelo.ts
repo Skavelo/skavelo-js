@@ -687,7 +687,7 @@ export class SkavelInstance {
       this.cursor.rest();
       this.unwatchTarget();
       // The control may be behind something an earlier step opens; look again once the wait is over.
-      const wait = this.showMode.msUntilLead();
+      const wait = this.showMode.msUntilRecheck();
       if (wait > 0) {
         clearTimeout(this.leadTimer);
         this.leadTimer = window.setTimeout(() => this.renderStep(), wait + 50);
@@ -705,7 +705,7 @@ export class SkavelInstance {
       total: view.total,
       found: !!view.el,
       anchor: view.el,
-      pending: !view.el && this.showMode.msUntilLead() > 0,
+      pending: !view.el && this.showMode.msUntilRecheck() > 0,
     });
     if (filling && view.el) this.doStepFor(view.el, view.stepIndex, last);
   }

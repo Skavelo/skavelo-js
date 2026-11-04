@@ -33,6 +33,12 @@ export interface StepView {
 export const LEAD_AFTER_MS = 1000;
 
 /**
+ * How long after following a step's link the next step waits for its page before pointing back
+ * at that link with "Open X first". The click finished the step before the app had changed page.
+ */
+export const NAV_SETTLE_MS = 2500;
+
+/**
  * Manages an active Show walkthrough. State lives in SessionStore so a walkthrough
  * that triggers a full page load picks up on the next page.
  */
@@ -43,6 +49,10 @@ export class ShowMode {
   private emit: (e: SkavelEvent) => void;
   /** When the visitor reached the current step. */
   private stepSince = Date.now();
+  /** When the visitor last moved forward a step, so its page may still be loading. */
+  private advancedAt = 0;
+  /** Set while the current step waits for the page its link opens. */
+  private waitingForPage = false;
   /** The step during which the visitor opened the page's menu because a step pointed at it. */
   private menuOpenedAt = -1;
 
@@ -103,6 +113,18 @@ export class ShowMode {
 
     // The step belongs on another page: point at a link that goes there first.
     const way = !found && step.pageUrlPattern && !onPage(step.pageUrlPattern) ? wayTo(step.pageUrlPattern) : null;
+    // They just followed that very link and the page hasn't changed yet: wait for it, rather than
+    // asking them to open what they're already opening.
+    this.waitingForPage = !!way && this.justFollowed(way.el);
+    if (this.waitingForPage) {
+      return {
+        instruction: step.instruction,
+        ...(step.title ? { heading: step.title } : {}),
+        stepIndex: this.stepIndex,
+        total: this.payload.steps.length,
+        el: null,
+      };
+    }
     if (way) {
       this.emit({ type: 'step', stepIndex: this.stepIndex, stepInstruction: step.instruction, elementFound: true });
       return {
@@ -195,6 +217,25 @@ export class ShowMode {
     return findHidden(locatorsOf(step));
   }
 
+  /** The link was the previous step's control, followed moments ago. */
+  private justFollowed(link: Element): boolean {
+    if (this.stepIndex === 0 || Date.now() - this.advancedAt >= NAV_SETTLE_MS) return false;
+    const { el } = resolveLocator(locatorsOf(this.payload.steps[this.stepIndex - 1]));
+    if (!el) return false;
+    if (el === link || el.contains(link) || link.contains(el)) return true;
+    const href = (e: Element) => (e instanceof HTMLAnchorElement ? e.href : e.closest('a')?.href) ?? '';
+    return !!href(el) && href(el) === href(link);
+  }
+
+  /**
+   * Milliseconds before the current step should be looked at again with nothing found: the wait
+   * for a lead, or for the page a followed link opens. 0 when there's nothing to wait for.
+   */
+  msUntilRecheck(now = Date.now()): number {
+    const page = this.waitingForPage ? Math.max(0, this.advancedAt + NAV_SETTLE_MS - now) : 0;
+    return Math.max(this.msUntilLead(now), page);
+  }
+
   /** Milliseconds before a missing control may be led to through an earlier step; 0 once it may. */
   msUntilLead(now = Date.now()): number {
     return Math.max(0, this.stepSince + LEAD_AFTER_MS - now);
@@ -227,6 +268,7 @@ export class ShowMode {
     }
     this.stepIndex++;
     this.stepSince = Date.now();
+    this.advancedAt = this.stepSince;
     this.persist();
     return true;
   }
