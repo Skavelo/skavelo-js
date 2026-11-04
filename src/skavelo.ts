@@ -399,6 +399,12 @@ export class SkavelInstance {
     clearTimeout(this.offerTimer);
     this.stopWatchingUrl();
     this.unwatchTarget();
+    // A press Skavelo had lined up for the visitor must not land once the widget is gone. The
+    // walkthrough's saved place stays, so the next page load still picks it up.
+    this.inFlight?.abort();
+    this.showMode = null;
+    clearTimeout(this.autoTimer);
+    clearTimeout(this.leadTimer);
     cancelAnimationFrame(this.frame);
     this.mutationObserver?.disconnect();
     this.highlight.destroy();

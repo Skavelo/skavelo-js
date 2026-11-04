@@ -44,6 +44,17 @@ describe('GhostCursor', () => {
     expect(cursor.position()).toEqual({ x: 100 + 120 - 12, y: 200 + 40 - 7 });
   });
 
+  it('still lands when frame timestamps run behind the clock (slowed animations)', async () => {
+    media({});
+    const { cursor } = make();
+    const el = button();
+    // Each frame reports a time from long before the glide began, as when animations are slowed.
+    const raf = window.requestAnimationFrame;
+    vi.spyOn(window, 'requestAnimationFrame').mockImplementation((cb) => raf(() => cb(-1e7)));
+    expect(await cursor.moveTo(el)).toBe(true);
+    expect(cursor.position()).toEqual({ x: 100 + 120 - 12, y: 200 + 40 - 7 });
+  });
+
   it('is never in the way: no clicks and no screen reader', () => {
     const { layer } = make();
     expect(layer.getAttribute('aria-hidden')).toBe('true');

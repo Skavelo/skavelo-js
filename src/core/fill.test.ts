@@ -68,6 +68,25 @@ describe('canClickFor', () => {
     }
     expect(canClickFor(html('<form><button type="submit">Go</button></form>').querySelector('button')!)).toBe(false);
   });
+
+  it('presses an action-named button that learning saw open something', () => {
+    expect(canClickFor(html('<button>Invite teammate</button>'), { opens: true })).toBe(true);
+  });
+
+  it('presses an action-named button that says it opens a dialog or panel', () => {
+    expect(canClickFor(html('<button aria-haspopup="dialog">Invite teammate</button>'))).toBe(true);
+    expect(canClickFor(html('<button aria-haspopup="true">Share</button>'))).toBe(true);
+    expect(canClickFor(html('<button aria-expanded="false" aria-controls="export-panel">Export</button>'))).toBe(true);
+  });
+
+  it('still leaves deleting, cancelling and paying to the visitor, popup or not', () => {
+    for (const label of ['Delete workspace', 'Cancel subscription', 'Pay now', 'Remove member']) {
+      expect(canClickFor(html(`<button aria-haspopup="dialog">${label}</button>`))).toBe(false);
+    }
+    expect(canClickFor(html('<button aria-haspopup="false">Send</button>'))).toBe(false);
+    expect(canClickFor(html('<button aria-expanded="false">Send</button>'))).toBe(false);
+    expect(canClickFor(html('<form><button aria-haspopup="dialog">Invite</button></form>').querySelector('button')!)).toBe(false);
+  });
 });
 
 it('turns the last instruction into a check', () => {

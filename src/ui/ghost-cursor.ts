@@ -165,18 +165,21 @@ export class GhostCursor {
     const duration = reducedMotion() ? 0 : Math.round(Math.min(900, Math.max(400, 380 + distance * 0.55)));
     await new Promise<void>((done) => {
       const began = performance.now();
-      const step = (now: number) => {
+      const step = () => {
         if (token !== this.seq) return done();
         // Recomputed every frame, so a control that's still settling is followed, not missed.
         const to = this.pointFor(el);
-        const t = duration ? Math.min(1, (now - began) / duration) : 1;
+        // Timed on the clock it started on. A frame's own timestamp can run behind performance.now()
+        // (a little in any browser, a lot when animations are slowed), which once sent the cursor
+        // off screen and left the glide, and the press waiting on it, unfinished.
+        const t = duration ? Math.min(1, Math.max(0, (performance.now() - began) / duration)) : 1;
         const k = easeOut(t);
         this.place({ x: from.x + (to.x - from.x) * k, y: from.y + (to.y - from.y) * k });
         if (t < 1) this.frame = requestAnimationFrame(step);
         else done();
       };
       if (duration) this.frame = requestAnimationFrame(step);
-      else step(performance.now());
+      else step();
     });
     if (token !== this.seq) return false;
     this.follow(token);
