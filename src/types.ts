@@ -104,6 +104,12 @@ export interface ThemeCfg {
   disclaimer?: boolean;
   disclaimerText?: string;
   disclaimerUrl?: string;
+  /**
+   * How the chat panel opens on wide screens: "float" (default), or docked full height to the
+   * "left" or "right" edge, over the page. Visitors can change it from the panel; their choice
+   * is remembered on their browser. Screens under 900px wide always float.
+   */
+  panel?: "float" | "left" | "right";
   /** Widget position on screen. Default "bottom-center". */
   position?: "bottom-center" | "bottom-right" | "bottom-left";
   /** Launcher text. Default "Get help". With launcher "icon" it isn't shown, but screen readers still announce it. */

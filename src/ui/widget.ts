@@ -236,6 +236,43 @@ const WIDGET_CSS = `
     height: min(720px, calc(100dvh - 48px));
     max-height: none;
   }
+  /* Docked: full height along one side, over the page, so the visitor works beside it. Only where
+     there's room for the app next to it (DOCK_MEDIA); smaller screens keep the floating panel. */
+  .sk-dock-btn { display: none !important; }
+  @media (min-width: 900px) and (min-height: 500px) {
+    .sk-dock-btn { display: grid !important; }
+    .sk-dock.sk-docked { top: 12px !important; bottom: 12px !important; width: 400px; transform: none; align-items: stretch; }
+    .sk-dock.sk-docked-right { right: 12px !important; left: auto !important; }
+    .sk-dock.sk-docked-left { left: 12px !important; right: auto !important; }
+    .sk-docked .sk-panel { flex: 1; width: 100%; height: auto; max-height: none; }
+    .sk-docked .sk-expand { display: none; }
+  }
+  .sk-head { position: relative; }
+  .sk-dock-menu {
+    position: absolute;
+    top: calc(100% - 6px);
+    right: 12px;
+    z-index: 2;
+    min-width: 180px;
+    padding: 4px;
+    border-radius: 12px;
+    border: 1px solid var(--sk-line);
+    background: var(--sk-surface);
+    box-shadow: var(--sk-shadow);
+  }
+  .sk-dock-menu button {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    padding: 8px 10px;
+    border-radius: 8px;
+    font-size: 13.5px;
+    color: var(--sk-text);
+    text-align: left;
+  }
+  .sk-dock-menu button:hover, .sk-dock-menu button:focus-visible { background: var(--sk-subtle); outline: none; }
+  .sk-dock-menu svg { color: var(--sk-text-2); flex-shrink: 0; }
   /* On a phone, a walkthrough step is a compact card at the bottom, so the page and the control it
      points at stay in view above it. */
   /* 639px: below CALLOUT_MIN_VIEWPORT, where steps show in the panel instead of beside the control.
@@ -577,6 +614,9 @@ const WIDGET_CSS = `
 `;
 
 const ICONS = {
+  dockRight: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2.5"/><path d="M14 4v16"/></svg>',
+  dockLeft: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2.5"/><path d="M10 4v16"/></svg>',
+  float: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2.5"/><rect x="11" y="11" width="7" height="6" rx="1.2"/></svg>',
   replay: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>',
   close: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>',
   closeSmall: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>',
@@ -770,6 +810,10 @@ export interface StepDisplay {
 
 /** Below this width a callout would cover most of the screen, so steps stay in the panel. */
 const CALLOUT_MIN_VIEWPORT = 640;
+/** Wide and tall enough for a docked panel with the app still usable beside it. Matches the CSS. */
+const DOCK_MEDIA = '(min-width: 900px) and (min-height: 500px)';
+const PANEL_KEY = '_sk_panel';
+export type PanelSide = 'left' | 'right';
 /** How long a missing control may stay missing (the page is changing) before the step moves to the panel. */
 const CALLOUT_GRACE_MS = 1200;
 
@@ -853,6 +897,13 @@ export class Widget {
   private stepPlace: 'callout' | 'panel' = 'panel';
   /** The visitor opened the panel during this step, to ask something. It stays open until they move on. */
   private stepInPanel = false;
+  /** The side the visitor docked the panel to, or 'float'; null until they choose, so the team's default applies. */
+  private panelChoice: PanelSide | 'float' | null = null;
+  /** Moved to the other side for this walkthrough, because the panel covered the control. */
+  private sideOverride: PanelSide | null = null;
+  private dockMedia: MediaQueryList | null = null;
+  private dockMediaChange: (() => void) | null = null;
+  private outsideMenu: ((e: Event) => void) | null = null;
 
   constructor(
     shadowRoot: ShadowRoot,
@@ -886,7 +937,13 @@ export class Widget {
         <div class="sk-head">
           <span class="sk-title"></span>
           <button class="sk-icon-btn sk-expand" type="button" aria-label="Expand" aria-pressed="false">${ICONS.expand}</button>
+          <button class="sk-icon-btn sk-dock-btn" type="button" aria-label="Panel position" aria-haspopup="menu" aria-expanded="false">${ICONS.dockRight}</button>
           <button class="sk-icon-btn sk-panel-close" type="button" aria-label="Close">${ICONS.close}</button>
+          <div class="sk-dock-menu" role="menu" aria-label="Panel position" hidden>
+            <button type="button" role="menuitem" data-side="left">${ICONS.dockLeft}<span>Dock to the left</span></button>
+            <button type="button" role="menuitem" data-side="right">${ICONS.dockRight}<span>Dock to the right</span></button>
+            <button type="button" role="menuitem" data-side="float">${ICONS.float}<span>Float</span></button>
+          </div>
         </div>
         <div class="sk-body">
           <div class="sk-messages" aria-live="polite"></div>
@@ -973,6 +1030,7 @@ export class Widget {
       const expanded = this.panel.classList.toggle('sk-expanded');
       (e.currentTarget as HTMLElement).setAttribute('aria-pressed', String(expanded));
     });
+    this.setupDockMenu();
     $('.sk-back').addEventListener('click', () => this.events.onStepBack());
     $('.sk-note-back').addEventListener('click', () => this.events.onStepBack());
     $('.sk-note-ask').addEventListener('click', () => {
@@ -1066,6 +1124,7 @@ export class Widget {
     this.pill.hidden = view !== 'pill';
     this.composer.hidden = view !== 'composer';
     this.panel.hidden = view !== 'panel';
+    this.applyDock();
     // Opening the widget answers a nudge either way.
     if (view !== 'pill') { this.nudgeItem = null; clearTimeout(this.nudgeTimer); }
     this.renderSuggestions();
@@ -1596,6 +1655,10 @@ export class Widget {
    * far, like a short sign-up form, move the card to the top of the screen instead.
    */
   private keepStepClear() {
+    if (this.dockedSide()) {
+      this.keepDockClear();
+      return;
+    }
     const step = this.step;
     const anchor = step?.anchor;
     if (!step || this.preview || !anchor?.isConnected || this.view !== 'panel' || this.calloutFits()) return;
@@ -1621,6 +1684,113 @@ export class Widget {
     this.setDockTop(!this.dockTop);
   }
 
+  // ─── Docked panel ─────────────────────────────────────────────────────────
+
+  private setupDockMenu() {
+    const btn = this.dock.querySelector('.sk-dock-btn') as HTMLButtonElement;
+    const menu = this.dock.querySelector('.sk-dock-menu') as HTMLElement;
+    if (!this.preview) {
+      try {
+        const saved = localStorage.getItem(PANEL_KEY);
+        if (saved === 'left' || saved === 'right' || saved === 'float') this.panelChoice = saved;
+      } catch {
+        // Storage can be blocked in private windows.
+      }
+    }
+    const items = () => Array.from(menu.querySelectorAll<HTMLButtonElement>('button'));
+    const close = (focusBtn: boolean) => {
+      menu.hidden = true;
+      btn.setAttribute('aria-expanded', 'false');
+      if (focusBtn) btn.focus();
+    };
+    btn.addEventListener('click', () => {
+      if (!menu.hidden) return close(false);
+      // The current choice isn't offered again: docked right offers left and Float.
+      const current = this.dockedSide() ?? 'float';
+      items().forEach((b) => (b.hidden = b.dataset.side === current));
+      menu.hidden = false;
+      btn.setAttribute('aria-expanded', 'true');
+      items().find((b) => !b.hidden)?.focus();
+    });
+    menu.addEventListener('click', (e) => {
+      const item = (e.target as Element).closest<HTMLButtonElement>('button[data-side]');
+      if (!item) return;
+      close(true);
+      this.setPanelSide(item.dataset.side as PanelSide | 'float');
+    });
+    menu.addEventListener('keydown', (e) => {
+      const shown = items().filter((b) => !b.hidden);
+      const at = shown.indexOf(e.target as HTMLButtonElement);
+      if (e.key === 'Escape') { e.stopPropagation(); close(true); }
+      else if (e.key === 'ArrowDown') { e.preventDefault(); shown[(at + 1) % shown.length]?.focus(); }
+      else if (e.key === 'ArrowUp') { e.preventDefault(); shown[(at - 1 + shown.length) % shown.length]?.focus(); }
+    });
+    this.dock.addEventListener('focusout', (e) => {
+      const to = e.relatedTarget as Node | null;
+      if (!menu.hidden && to && !menu.contains(to) && to !== btn) close(false);
+    });
+    // A click anywhere else, on the page or in the panel, puts the menu away.
+    this.outsideMenu = (e: Event) => {
+      const path = e.composedPath();
+      if (!menu.hidden && !path.includes(menu) && !path.includes(btn)) close(false);
+    };
+    window.addEventListener('pointerdown', this.outsideMenu, true);
+    // Back to floating when the window gets too small for a docked panel, and docked again after.
+    this.dockMedia = window.matchMedia?.(DOCK_MEDIA) ?? null;
+    this.dockMediaChange = () => this.applyDock();
+    this.dockMedia?.addEventListener?.('change', this.dockMediaChange);
+  }
+
+  /** The visitor's choice: docked to a side, or floating. Remembered on this browser. */
+  setPanelSide(side: PanelSide | 'float') {
+    this.panelChoice = side;
+    this.sideOverride = null;
+    if (!this.preview) {
+      try { localStorage.setItem(PANEL_KEY, side); } catch {}
+    }
+    if (side !== 'float') {
+      this.panel.classList.remove('sk-expanded');
+      this.dock.querySelector('.sk-expand')?.setAttribute('aria-pressed', 'false');
+    }
+    this.applyDock();
+    if (this.step && this.view === 'panel') this.showStep(this.step);
+    else if (this.step && side === 'float' && this.calloutFor(this.step)) this.placeStep('callout');
+  }
+
+  /** The side the open panel is docked to right now, or null when it floats. */
+  private dockedSide(): PanelSide | null {
+    const choice = this.panelChoice ?? this.theme.panel ?? 'float';
+    if (choice === 'float') return null;
+    if (!(this.dockMedia?.matches ?? window.matchMedia?.(DOCK_MEDIA).matches)) return null;
+    return this.sideOverride ?? choice;
+  }
+
+  private applyDock() {
+    const side = this.view === 'panel' ? this.dockedSide() : null;
+    this.dock.classList.toggle('sk-docked', !!side);
+    this.dock.classList.toggle('sk-docked-left', side === 'left');
+    this.dock.classList.toggle('sk-docked-right', side === 'right');
+    const btn = this.dock.querySelector('.sk-dock-btn') as HTMLElement | null;
+    if (btn) btn.innerHTML = side === 'left' ? ICONS.dockLeft : side === 'right' ? ICONS.dockRight : ICONS.float;
+  }
+
+  /**
+   * Docked over the page, the panel can cover the control a step points at. Then it moves to the
+   * other side for the rest of the walkthrough, once, so a control too wide for either side doesn't
+   * send it back and forth. The visitor's own choice is kept for next time.
+   */
+  private keepDockClear() {
+    const step = this.step;
+    const anchor = step?.anchor;
+    const side = this.dockedSide();
+    if (!step || !side || this.preview || !anchor?.isConnected || this.sideOverride) return;
+    const r = anchor.getBoundingClientRect();
+    const p = this.panel.getBoundingClientRect();
+    if (!r.width || r.right <= p.left || r.left >= p.right || r.bottom <= p.top || r.top >= p.bottom) return;
+    this.sideOverride = side === 'right' ? 'left' : 'right';
+    this.applyDock();
+  }
+
   private setDockTop(top: boolean) {
     this.dockTop = top;
     const offset = `${this.theme.offset ?? 24}px`;
@@ -1631,6 +1801,10 @@ export class Widget {
   clearStep() {
     clearTimeout(this.clearTimer);
     this.dockMovedAt = -1;
+    if (this.sideOverride) {
+      this.sideOverride = null;
+      this.applyDock();
+    }
     if (this.dockTop) this.setDockTop(false);
     this.step = null;
     this.stepInPanel = false;
@@ -1643,7 +1817,8 @@ export class Widget {
 
   /** The step shows beside its control: the control is on the page, and the screen is wide enough. */
   private calloutFor(step: StepDisplay): boolean {
-    return !!step.anchor?.isConnected && !this.stepInPanel && this.calloutFits();
+    // Docked, the step shows in the panel beside the app, and the highlight marks the control.
+    return !!step.anchor?.isConnected && !this.stepInPanel && this.calloutFits() && !this.dockedSide();
   }
 
   private calloutFits(): boolean {
@@ -1840,6 +2015,7 @@ export class Widget {
     link.hidden = !url;
     if (url) link.href = url;
     else link.removeAttribute('href');
+    this.applyDock();
   }
 
   /** Forces light or dark (dashboard preview); null matches the page again. */
@@ -1923,6 +2099,8 @@ export class Widget {
 
   destroy() {
     clearTimeout(this.clearTimer);
+    if (this.dockMediaChange) this.dockMedia?.removeEventListener?.('change', this.dockMediaChange);
+    if (this.outsideMenu) window.removeEventListener('pointerdown', this.outsideMenu, true);
     cancelAnimationFrame(this.schemeFrame);
     this.schemeObserver?.disconnect();
     if (this.schemeUpdate) this.schemeMedia?.removeEventListener?.('change', this.schemeUpdate);
