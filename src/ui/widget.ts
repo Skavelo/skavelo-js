@@ -899,8 +899,6 @@ export class Widget {
   private stepInPanel = false;
   /** The side the visitor docked the panel to, or 'float'; null until they choose, so the team's default applies. */
   private panelChoice: PanelSide | 'float' | null = null;
-  /** Moved to the other side for this walkthrough, because the panel covered the control. */
-  private sideOverride: PanelSide | null = null;
   private dockMedia: MediaQueryList | null = null;
   private dockMediaChange: (() => void) | null = null;
   private outsideMenu: ((e: Event) => void) | null = null;
@@ -1620,6 +1618,8 @@ export class Widget {
     // A new step goes back beside its control, even if the visitor had the panel open to ask.
     if (step.stepIndex !== this.step?.stepIndex) this.stepInPanel = false;
     this.step = step;
+    // An open docked panel floats again for the walkthrough.
+    this.applyDock();
     this.fillCallout(step);
 
     if (this.calloutFor(step)) {
@@ -1655,10 +1655,6 @@ export class Widget {
    * far, like a short sign-up form, move the card to the top of the screen instead.
    */
   private keepStepClear() {
-    if (this.dockedSide()) {
-      this.keepDockClear();
-      return;
-    }
     const step = this.step;
     const anchor = step?.anchor;
     if (!step || this.preview || !anchor?.isConnected || this.view !== 'panel' || this.calloutFits()) return;
@@ -1744,7 +1740,6 @@ export class Widget {
   /** The visitor's choice: docked to a side, or floating. Remembered on this browser. */
   setPanelSide(side: PanelSide | 'float') {
     this.panelChoice = side;
-    this.sideOverride = null;
     if (!this.preview) {
       try { localStorage.setItem(PANEL_KEY, side); } catch {}
     }
@@ -1753,16 +1748,18 @@ export class Widget {
       this.dock.querySelector('.sk-expand')?.setAttribute('aria-pressed', 'false');
     }
     this.applyDock();
-    if (this.step && this.view === 'panel') this.showStep(this.step);
-    else if (this.step && side === 'float' && this.calloutFor(this.step)) this.placeStep('callout');
   }
 
-  /** The side the open panel is docked to right now, or null when it floats. */
+  /**
+   * The side the open panel is docked to right now, or null when it floats. A walkthrough, from its
+   * introduction to its last step, always runs the usual way: beside each control, or the compact
+   * card on a phone. The visitor's side comes back when it ends.
+   */
   private dockedSide(): PanelSide | null {
     const choice = this.panelChoice ?? this.theme.panel ?? 'float';
-    if (choice === 'float') return null;
+    if (choice === 'float' || this.step || this.introDone) return null;
     if (!(this.dockMedia?.matches ?? window.matchMedia?.(DOCK_MEDIA).matches)) return null;
-    return this.sideOverride ?? choice;
+    return choice;
   }
 
   private applyDock() {
@@ -1772,23 +1769,6 @@ export class Widget {
     this.dock.classList.toggle('sk-docked-right', side === 'right');
     const btn = this.dock.querySelector('.sk-dock-btn') as HTMLElement | null;
     if (btn) btn.innerHTML = side === 'left' ? ICONS.dockLeft : side === 'right' ? ICONS.dockRight : ICONS.float;
-  }
-
-  /**
-   * Docked over the page, the panel can cover the control a step points at. Then it moves to the
-   * other side for the rest of the walkthrough, once, so a control too wide for either side doesn't
-   * send it back and forth. The visitor's own choice is kept for next time.
-   */
-  private keepDockClear() {
-    const step = this.step;
-    const anchor = step?.anchor;
-    const side = this.dockedSide();
-    if (!step || !side || this.preview || !anchor?.isConnected || this.sideOverride) return;
-    const r = anchor.getBoundingClientRect();
-    const p = this.panel.getBoundingClientRect();
-    if (!r.width || r.right <= p.left || r.left >= p.right || r.bottom <= p.top || r.top >= p.bottom) return;
-    this.sideOverride = side === 'right' ? 'left' : 'right';
-    this.applyDock();
   }
 
   private setDockTop(top: boolean) {
@@ -1801,10 +1781,6 @@ export class Widget {
   clearStep() {
     clearTimeout(this.clearTimer);
     this.dockMovedAt = -1;
-    if (this.sideOverride) {
-      this.sideOverride = null;
-      this.applyDock();
-    }
     if (this.dockTop) this.setDockTop(false);
     this.step = null;
     this.stepInPanel = false;
@@ -1813,12 +1789,12 @@ export class Widget {
     this.calloutGrace = 0;
     this.hideCallout();
     this.showMessages();
+    this.applyDock();
   }
 
   /** The step shows beside its control: the control is on the page, and the screen is wide enough. */
   private calloutFor(step: StepDisplay): boolean {
-    // Docked, the step shows in the panel beside the app, and the highlight marks the control.
-    return !!step.anchor?.isConnected && !this.stepInPanel && this.calloutFits() && !this.dockedSide();
+    return !!step.anchor?.isConnected && !this.stepInPanel && this.calloutFits();
   }
 
   private calloutFits(): boolean {
@@ -1925,6 +1901,7 @@ export class Widget {
     this.messagesEl.hidden = true;
     this.stepEl.hidden = true;
     this.introEl.hidden = false;
+    this.applyDock();
     if (this.view !== 'panel') this.setView('panel');
     (this.introEl.querySelector('.sk-intro-start') as HTMLButtonElement).focus({ preventScroll: true });
   }
@@ -1933,6 +1910,7 @@ export class Widget {
     const done = this.introDone;
     this.introDone = null;
     this.introEl.hidden = true;
+    this.applyDock();
     if (!start) {
       this.showMessages();
       if (!this.hasConversation) this.setView('pill');

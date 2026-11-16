@@ -35,10 +35,6 @@ const make = (theme: AppliedTheme = {}) => {
   return { widget, $, docked, choose };
 };
 
-const box = (el: Element, r: { left: number; right: number; top?: number; bottom?: number }) => {
-  el.getBoundingClientRect = () => ({ top: 0, bottom: 800, width: r.right - r.left, height: 800, x: r.left, y: 0, ...r }) as DOMRect;
-};
-
 describe('docked panel', () => {
   it('floats by default, and docks to the side the team set', () => {
     const a = make();
@@ -92,31 +88,50 @@ describe('docked panel', () => {
     expect(docked()).toBeNull();
   });
 
-  it('shows a walkthrough step in the docked panel, not beside the control', () => {
-    const { widget, $ } = make({ panel: 'right' });
-    const target = document.createElement('button');
-    document.body.append(target);
-    widget.showView('panel');
-    widget.showStep({ title: 'x', instruction: 'Click **Save**.', stepIndex: 0, total: 2, found: true, anchor: target });
-    expect($('.sk-panel').hidden).toBe(false);
-    expect($('.sk-step').hidden).toBe(false);
-    expect($('.sk-callout').hidden).toBe(true);
-  });
-
-  it('moves to the other side for the walkthrough when it covers the control, then goes back', async () => {
-    vi.useFakeTimers();
+  it('runs a walkthrough the usual way, beside the control, and docks again when it’s over', () => {
     const { widget, docked, $ } = make({ panel: 'right' });
     const target = document.createElement('button');
     document.body.append(target);
-    box(target, { left: 900, right: 980, top: 100, bottom: 130 });
-    box($('.sk-panel'), { left: 800, right: 1200 });
     widget.showView('panel');
-    widget.showStep({ title: 'x', instruction: 'Click **Save**.', stepIndex: 0, total: 2, found: true, anchor: target });
-    vi.advanceTimersByTime(500);
-    expect(docked()).toBe('left');
-    expect(localStorage.getItem('_sk_panel')).toBeNull();
-    widget.clearStep();
     expect(docked()).toBe('right');
-    vi.useRealTimers();
+    widget.showStep({ title: 'x', instruction: 'Click **Save**.', stepIndex: 0, total: 2, found: true, anchor: target });
+    expect($('.sk-callout').hidden).toBe(false);
+    expect($('.sk-panel').hidden).toBe(true);
+    expect(docked()).toBeNull();
+    // Finished: the ending shows in the panel on the visitor's side.
+    widget.clearStep();
+    widget.showEnding();
+    expect(docked()).toBe('right');
+  });
+
+  it('floats an open docked panel when a step shows in it, like a control that isn’t on the page', () => {
+    const { widget, docked, $ } = make({ panel: 'left' });
+    widget.showView('panel');
+    widget.showStep({ title: 'x', instruction: 'Click **Billing**.', stepIndex: 0, total: 2, found: false });
+    expect($('.sk-panel').hidden).toBe(false);
+    expect(docked()).toBeNull();
+    widget.clearStep();
+    expect(docked()).toBe('left');
+  });
+
+  it('floats for a walkthrough’s introduction, and docks again after Not now', () => {
+    const { widget, docked, $ } = make({ panel: 'right' });
+    widget.showView('panel');
+    widget.showIntro({ name: 'Create an API key', total: 5 }, () => {});
+    expect(docked()).toBeNull();
+    ($('.sk-intro-later') as HTMLButtonElement).click();
+    expect(docked()).toBe('right');
+  });
+
+  it('keeps a side chosen during a walkthrough for after it', () => {
+    const { widget, docked, choose } = make();
+    const target = document.createElement('button');
+    document.body.append(target);
+    widget.showView('panel');
+    widget.showStep({ title: 'x', instruction: 'Click **Billing**.', stepIndex: 0, total: 2, found: false });
+    choose('left');
+    expect(docked()).toBeNull();
+    widget.clearStep();
+    expect(docked()).toBe('left');
   });
 });
