@@ -1762,31 +1762,26 @@ export class Widget {
       btn.setAttribute('aria-expanded', 'false');
       if (focusBtn) btn.focus();
     };
+    const run = (item: HTMLButtonElement) => {
+      if (item.dataset.action === 'expand') {
+        this.panel.classList.toggle('sk-expanded');
+        this.refreshMore();
+      } else this.setPanelSide(item.dataset.side as PanelSide | 'float');
+    };
     btn.addEventListener('click', () => {
       if (!menu.hidden) return close(false);
-      const side = this.dockedSide();
-      const roomToDock = !!(this.dockMedia?.matches ?? window.matchMedia?.(DOCK_MEDIA).matches) && !this.step && !this.introDone;
-      const expanded = this.panel.classList.contains('sk-expanded');
-      for (const b of items()) {
-        if (b.dataset.action === 'expand') {
-          // Docked, the panel already has the full height.
-          b.hidden = !!side;
-          (b.querySelector('span') as HTMLElement).textContent = expanded ? 'Exit full size' : 'Expand';
-        } else {
-          // The current choice isn't offered again: docked right offers left and Float.
-          b.hidden = !roomToDock || b.dataset.side === (side ?? 'float');
-        }
-      }
+      const shown = this.refreshMore();
+      // A single choice is the button itself, like Expand on a phone: no menu to open.
+      if (shown.length === 1) return run(shown[0]);
       menu.hidden = false;
       btn.setAttribute('aria-expanded', 'true');
-      items().find((b) => !b.hidden)?.focus();
+      shown[0]?.focus();
     });
     menu.addEventListener('click', (e) => {
       const item = (e.target as Element).closest<HTMLButtonElement>('button[role="menuitem"]');
       if (!item) return;
       close(true);
-      if (item.dataset.action === 'expand') this.panel.classList.toggle('sk-expanded');
-      else this.setPanelSide(item.dataset.side as PanelSide | 'float');
+      run(item);
     });
     menu.addEventListener('keydown', (e) => {
       const shown = items().filter((b) => !b.hidden);
@@ -1809,6 +1804,45 @@ export class Widget {
     this.dockMedia = window.matchMedia?.(DOCK_MEDIA) ?? null;
     this.dockMediaChange = () => this.applyDock();
     this.dockMedia?.addEventListener?.('change', this.dockMediaChange);
+  }
+
+  /**
+   * What the ⋯ menu offers right now. With only one choice, the button becomes that choice, with
+   * its icon and name (Expand on a phone), instead of a menu holding a single item.
+   */
+  private refreshMore(): HTMLButtonElement[] {
+    const btn = this.dock.querySelector('.sk-more-btn') as HTMLButtonElement | null;
+    const menu = this.dock.querySelector('.sk-more-menu') as HTMLElement | null;
+    if (!btn || !menu) return [];
+    const side = this.dockedSide();
+    const roomToDock = !!(this.dockMedia?.matches ?? window.matchMedia?.(DOCK_MEDIA).matches) && !this.step && !this.introDone;
+    const expanded = this.panel.classList.contains('sk-expanded');
+    const items = Array.from(menu.querySelectorAll<HTMLButtonElement>('button[role="menuitem"]'));
+    for (const b of items) {
+      if (b.dataset.action === 'expand') {
+        // Docked, the panel already has the full height.
+        b.hidden = !!side;
+        (b.querySelector('span') as HTMLElement).textContent = expanded ? 'Exit full size' : 'Expand';
+      } else {
+        // The current choice isn't offered again: docked right offers left and Float.
+        b.hidden = !roomToDock || b.dataset.side === (side ?? 'float');
+      }
+    }
+    const shown = items.filter((b) => !b.hidden);
+    const single = shown.length === 1 ? shown[0] : null;
+    const label = single ? (single.querySelector('span') as HTMLElement).textContent ?? '' : 'More options';
+    btn.innerHTML = single ? (single.querySelector('svg')?.outerHTML ?? ICONS.more) : ICONS.more;
+    btn.setAttribute('aria-label', label);
+    btn.title = label;
+    if (single) {
+      btn.removeAttribute('aria-haspopup');
+      btn.removeAttribute('aria-expanded');
+    } else {
+      btn.setAttribute('aria-haspopup', 'menu');
+      btn.setAttribute('aria-expanded', String(!menu.hidden));
+    }
+    btn.hidden = !shown.length;
+    return shown;
   }
 
   /** The visitor's choice: docked to a side, or floating. Remembered on this browser. */
@@ -1841,6 +1875,7 @@ export class Widget {
     // New chat once there's something to start over from, but not mid walkthrough.
     const fresh = this.dock.querySelector('.sk-new-btn') as HTMLElement | null;
     if (fresh) fresh.hidden = !this.hasConversation || !!this.step || !!this.introDone;
+    this.refreshMore();
   }
 
   private setDockTop(top: boolean) {

@@ -91,12 +91,20 @@ describe('docked panel', () => {
     expect($('.sk-panel').classList.contains('sk-expanded')).toBe(false);
   });
 
-  it('floats on a screen too small to dock, and offers only Expand there', () => {
+  it('floats on a screen too small to dock, where the button is Expand itself, not a menu of one', () => {
     wide = false;
-    const { widget, docked, offered } = make({ panel: 'right' });
+    const { widget, docked, $ } = make({ panel: 'right' });
     widget.showView('panel');
     expect(docked()).toBeNull();
-    expect(offered()).toEqual(['Expand']);
+    const btn = $('.sk-more-btn');
+    expect(btn.getAttribute('aria-label')).toBe('Expand');
+    expect(btn.hasAttribute('aria-haspopup')).toBe(false);
+    btn.click();
+    expect($('.sk-more-menu').hidden).toBe(true);
+    expect($('.sk-panel').classList.contains('sk-expanded')).toBe(true);
+    expect(btn.getAttribute('aria-label')).toBe('Exit full size');
+    btn.click();
+    expect($('.sk-panel').classList.contains('sk-expanded')).toBe(false);
   });
 
   it('runs a walkthrough the usual way, beside the control, and docks again when it’s over', () => {
@@ -135,9 +143,9 @@ describe('docked panel', () => {
   });
 
   it('doesn’t offer docking during a walkthrough, which always runs the usual way', () => {
-    const { widget, offered } = make({ panel: 'right' });
+    const { widget, $ } = make({ panel: 'right' });
     widget.showView('panel');
     widget.showStep({ title: 'x', instruction: 'Click **Billing**.', stepIndex: 0, total: 2, found: false });
-    expect(offered()).toEqual(['Expand']);
+    expect($('.sk-more-btn').getAttribute('aria-label')).toBe('Expand');
   });
 });
