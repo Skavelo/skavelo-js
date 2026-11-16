@@ -137,7 +137,7 @@ function findByAriaRoleAndName(role: string, name: string): Element | null {
   for (const el of candidates) {
     if (!usable(el)) continue;
     const computed = computedAriaLabel(el);
-    if (computed.toLowerCase() === name.toLowerCase()) return el;
+    if (sameName(computed, name)) return el;
   }
 
   // Fallback: native elements with matching accessible name
@@ -155,34 +155,46 @@ function findByAriaRoleAndName(role: string, name: string): Element | null {
     for (const el of nativeCandidates) {
       if (!usable(el)) continue;
       const computed = computedAriaLabel(el);
-      if (computed.toLowerCase() === name.toLowerCase()) return el;
+      if (sameName(computed, name)) return el;
     }
   }
 
   // A card, like a template picker's button holding a title, a description and a badge: its name
   // is all of that, so it's found by its title.
-  const cards = selector ? `[role="${role}"], ${selector}` : `[role="${role}"]`;
-  return Array.from(document.querySelectorAll(cards)).find((el) => usable(el) && titled(el, name)) ?? null;
+  return onlyCard(document.querySelectorAll(selector ? `[role="${role}"], ${selector}` : `[role="${role}"]`), name);
 }
 
 /**
- * Whether a control holding several lines of text is the one called name: its first line or
- * heading is the name, or, for a long name, its text starts with it, since learning cuts names
- * at 80 characters ("Abandoned Cart Recovery Three emails with the shopper's own cart: a reminder aft").
- * Short names never match by their start, so **Save** doesn't find Save draft.
+ * The one card on screen with this title. Only a last resort, when no control has the name
+ * exactly, and never a guess: with two cards titled Upgrade, it finds neither.
+ */
+function onlyCard(candidates: Iterable<Element>, name: string): Element | null {
+  const found = Array.from(candidates).filter((el) => usable(el) && isVisible(el) && titled(el, name));
+  return found.length === 1 ? found[0] : null;
+}
+
+/**
+ * Whether a card is the one called name, by the same rule learning names cards with (backend
+ * crawler.ts cardTitle): a heading inside it, or its first line when a description follows.
+ * Lines without a letter are icons drawn with a character, like ▣ before the title.
  */
 function titled(el: Element, name: string): boolean {
   const n = name.replace(/\s+/g, ' ').trim().toLowerCase();
   if (!n) return false;
-  // Lines without a letter or digit are icons drawn with a character, like ▣ before the title.
-  const lines = ((el as HTMLElement).innerText ?? el.textContent ?? '')
+  const text = ((el as HTMLElement).innerText ?? el.textContent ?? '').trim();
+  const lines = text
     .split('\n')
     .map((l) => l.replace(/\s+/g, ' ').trim().toLowerCase())
     .filter((l) => /[\p{L}\p{N}]/u.test(l));
-  if (lines.length > 1 && lines[0] === n) return true;
-  const heading = el.querySelector('h1, h2, h3, h4, h5, h6')?.textContent?.replace(/\s+/g, ' ').trim().toLowerCase();
-  if (heading === n) return true;
-  return n.length >= 40 && lines.join(' ').startsWith(n);
+  if (lines.length < 2) return false;
+  const heading = el.querySelector('h1, h2, h3, h4, h5, h6, [role="heading"]')?.textContent?.replace(/\s+/g, ' ').trim().toLowerCase();
+  return heading ? heading === n : text.length > 40 && lines[0] === n;
+}
+
+/** Names compare without case, extra spaces or a required field's star: "Email address *" is Email address. */
+function sameName(a: string, b: string): boolean {
+  const norm = (v: string) => v.replace(/\s+/g, ' ').replace(/\s*\*$/, '').trim().toLowerCase();
+  return norm(a) === norm(b);
 }
 
 function computedAriaLabel(el: Element): string {
@@ -252,8 +264,7 @@ function findByText(text: string): Element | null {
     const elText = el.innerText?.trim().toLowerCase();
     if (elText === normalised && isInteractiveLike(el) && usable(el)) return el;
   }
-  const cards = document.querySelectorAll<HTMLElement>('button, a, [role="button"], [role="link"], [role="option"], [role="tab"], [role="menuitem"]');
-  return Array.from(cards).find((el) => usable(el) && titled(el, text)) ?? null;
+  return onlyCard(document.querySelectorAll('button, a, [role="button"], [role="link"], [role="option"], [role="tab"], [role="menuitem"]'), text);
 }
 
 function isInteractiveLike(el: HTMLElement): boolean {

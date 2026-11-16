@@ -28,11 +28,10 @@ describe('cards found by their title', () => {
     expect(resolveLocator([{ type: 'text', score: 0.55, value: 'Post-Purchase Review Request' }]).el?.id).toBe('review');
   });
 
-  it('finds a card by the cut-off name learning recorded for it', () => {
-    document.body.innerHTML = picker;
+  it('finds a required field learning names without its star', () => {
+    document.body.innerHTML = `<label for="e">Email address *</label><input id="e">`;
     sized();
-    const learned = "Abandoned Cart Recovery Three emails with the shopper's own cart: a reminder aft";
-    expect(resolveLocator([{ type: 'aria', score: 0.8, value: `button::${learned}` }]).el?.id).toBe('cart');
+    expect(resolveLocator([{ type: 'aria', score: 0.8, value: 'textbox::Email address' }]).el?.id).toBe('e');
   });
 
   it('doesn’t match a short name by the start of a longer one', () => {
@@ -40,5 +39,23 @@ describe('cards found by their title', () => {
     sized();
     expect(resolveLocator([{ type: 'aria', score: 0.6, value: 'button::Save' }]).el).toBeNull();
     expect(resolveLocator([{ type: 'text', score: 0.55, value: 'Save' }]).el).toBeNull();
+  });
+
+  it('finds neither of two cards with the same title, rather than guess', () => {
+    document.body.innerHTML = `
+      <button id="starter"><h3>Upgrade</h3><p>Starter plan, 2,000 conversations a month.</p></button>
+      <button id="growth"><h3>Upgrade</h3><p>Growth plan, 10,000 conversations a month.</p></button>`;
+    sized();
+    expect(resolveLocator([{ type: 'aria', score: 0.6, value: 'button::Upgrade' }]).el).toBeNull();
+    expect(resolveLocator([{ type: 'text', score: 0.55, value: 'Upgrade' }]).el).toBeNull();
+  });
+
+  it('leaves exact matches as they were: a button named exactly wins over a card titled the same', () => {
+    document.body.innerHTML = `
+      <button id="card"><h3>Export</h3><p>Download every contact as a CSV file.</p></button>
+      <button id="plain">Export</button>`;
+    sized();
+    expect(resolveLocator([{ type: 'aria', score: 0.6, value: 'button::Export' }]).el?.id).toBe('plain');
+    expect(resolveLocator([{ type: 'text', score: 0.55, value: 'Export' }]).el?.id).toBe('plain');
   });
 });

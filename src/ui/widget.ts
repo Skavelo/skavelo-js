@@ -248,7 +248,7 @@ const WIDGET_CSS = `
   /* So short that the follow-up box would push Back and Next out of sight: the step comes first. */
   @media (max-height: 500px) {
     .sk-panel:not(.sk-expanded):has(.sk-step:not([hidden])) { max-height: calc(100dvh - 24px); }
-    .sk-panel:has(.sk-step:not([hidden])) .sk-ask { display: none; }
+    .sk-panel:has(.sk-step:not([hidden])) .sk-ask, .sk-panel:has(.sk-step:not([hidden])) .sk-notice { display: none; }
   }
   .sk-head {
     display: flex;
@@ -507,6 +507,21 @@ const WIDGET_CSS = `
   .sk-ask .sk-icon-btn { width: 34px; height: 34px; border-radius: 999px; background: var(--sk-subtle); }
   .sk-ask .sk-icon-btn:hover { background: var(--sk-line); }
 
+  .sk-notice {
+    margin: -4px 0 0;
+    padding: 0 16px 10px;
+    text-align: center;
+    font-size: 12px;
+    line-height: 1.4;
+    color: var(--sk-text-3);
+  }
+  .sk-notice a { color: inherit; text-decoration: underline; text-underline-offset: 2px; white-space: nowrap; }
+  .sk-notice a:hover { color: var(--sk-text-2); }
+  /* A phone: a little smaller and closer to the edges, so the line and its link stay on one line. */
+  @media (max-width: 419px) {
+    .sk-notice { padding: 0 12px 10px; font-size: 11px; }
+  }
+
   .sk-foot {
     display: flex;
     align-items: center;
@@ -763,6 +778,18 @@ export type View = 'pill' | 'composer' | 'panel';
 /** Theme plus the plan-controlled branding flag, which customers can't set from code. */
 export type AppliedTheme = ThemeCfg & { branding?: boolean };
 
+export const DEFAULT_DISCLAIMER = 'AI can make mistakes. Check important details.';
+
+/** A link the team set, only when it's a full https address. */
+function httpsUrl(value: string | undefined): string | null {
+  try {
+    const url = value ? new URL(value.trim()) : null;
+    return url?.protocol === 'https:' ? url.href : null;
+  } catch {
+    return null;
+  }
+}
+
 /** What the "Talk to a person" click can do next. */
 export interface HandoffOffer {
   /** Replace the button with a status line. */
@@ -895,6 +922,7 @@ export class Widget {
           <input class="sk-field" type="text" placeholder="Ask a follow-up" aria-label="Ask a follow-up" autocomplete="off" />
           <button class="sk-icon-btn" type="button" aria-label="Send">${ICONS.arrowUp}</button>
         </form>
+        <p class="sk-notice"><span class="sk-notice-text"></span> <a class="sk-notice-link" target="_blank" rel="noopener noreferrer" hidden>Learn more</a></p>
         <div class="sk-foot">Powered by ${mark(13)}<strong>Skavelo</strong></div>
       </div>
     `;
@@ -1801,6 +1829,17 @@ export class Widget {
     this.title = theme.title || 'Help';
     if (this.stepEl.hidden) this.titleEl.textContent = this.title;
     (d.querySelector('.sk-foot') as HTMLElement).hidden = theme.branding === false;
+
+    // The line saying answers come from AI, in the team's words, with their link when it's https.
+    const notice = d.querySelector('.sk-notice') as HTMLElement;
+    notice.hidden = theme.disclaimer === false;
+    (notice.querySelector('.sk-notice-text') as HTMLElement).textContent =
+      theme.disclaimerText?.trim() || DEFAULT_DISCLAIMER;
+    const link = notice.querySelector('.sk-notice-link') as HTMLAnchorElement;
+    const url = httpsUrl(theme.disclaimerUrl);
+    link.hidden = !url;
+    if (url) link.href = url;
+    else link.removeAttribute('href');
   }
 
   /** Forces light or dark (dashboard preview); null matches the page again. */

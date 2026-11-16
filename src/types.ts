@@ -97,6 +97,13 @@ export interface ThemeCfg {
    * switches it off. Touch screens never show it, and with reduced motion it appears without gliding.
    */
   cursor?: boolean;
+  /**
+   * A short line under the question box saying answers come from AI. Default true; false hides it.
+   * disclaimerText replaces the default words; disclaimerUrl (https) adds a "Learn more" link.
+   */
+  disclaimer?: boolean;
+  disclaimerText?: string;
+  disclaimerUrl?: string;
   /** Widget position on screen. Default "bottom-center". */
   position?: "bottom-center" | "bottom-right" | "bottom-left";
   /** Launcher text. Default "Get help". With launcher "icon" it isn't shown, but screen readers still announce it. */
