@@ -159,7 +159,30 @@ function findByAriaRoleAndName(role: string, name: string): Element | null {
     }
   }
 
-  return null;
+  // A card, like a template picker's button holding a title, a description and a badge: its name
+  // is all of that, so it's found by its title.
+  const cards = selector ? `[role="${role}"], ${selector}` : `[role="${role}"]`;
+  return Array.from(document.querySelectorAll(cards)).find((el) => usable(el) && titled(el, name)) ?? null;
+}
+
+/**
+ * Whether a control holding several lines of text is the one called name: its first line or
+ * heading is the name, or, for a long name, its text starts with it, since learning cuts names
+ * at 80 characters ("Abandoned Cart Recovery Three emails with the shopper's own cart: a reminder aft").
+ * Short names never match by their start, so **Save** doesn't find Save draft.
+ */
+function titled(el: Element, name: string): boolean {
+  const n = name.replace(/\s+/g, ' ').trim().toLowerCase();
+  if (!n) return false;
+  // Lines without a letter or digit are icons drawn with a character, like ▣ before the title.
+  const lines = ((el as HTMLElement).innerText ?? el.textContent ?? '')
+    .split('\n')
+    .map((l) => l.replace(/\s+/g, ' ').trim().toLowerCase())
+    .filter((l) => /[\p{L}\p{N}]/u.test(l));
+  if (lines.length > 1 && lines[0] === n) return true;
+  const heading = el.querySelector('h1, h2, h3, h4, h5, h6')?.textContent?.replace(/\s+/g, ' ').trim().toLowerCase();
+  if (heading === n) return true;
+  return n.length >= 40 && lines.join(' ').startsWith(n);
 }
 
 function computedAriaLabel(el: Element): string {
@@ -229,7 +252,8 @@ function findByText(text: string): Element | null {
     const elText = el.innerText?.trim().toLowerCase();
     if (elText === normalised && isInteractiveLike(el) && usable(el)) return el;
   }
-  return null;
+  const cards = document.querySelectorAll<HTMLElement>('button, a, [role="button"], [role="link"], [role="option"], [role="tab"], [role="menuitem"]');
+  return Array.from(cards).find((el) => usable(el) && titled(el, text)) ?? null;
 }
 
 function isInteractiveLike(el: HTMLElement): boolean {
