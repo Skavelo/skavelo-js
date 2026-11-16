@@ -1,4 +1,5 @@
 import type { ElementDescriptor } from '../types';
+import { controlName } from './locator';
 
 /** Interactive ARIA roles that should always be included */
 const INTERACTIVE_ROLES = new Set([
@@ -13,6 +14,9 @@ const INTERACTIVE_TAGS = new Set([
 
 /** Tags whose content is definitely sensitive — never send their text */
 const SENSITIVE_TAGS = new Set(['INPUT', 'TEXTAREA']);
+
+/** Controls that show the option chosen rather than their name. */
+const VALUE_SHOWN = 'select, [role="combobox"], [aria-haspopup="listbox"]';
 
 /** Max elements to include in a single payload (spec: "trimmed element list") */
 const MAX_ELEMENTS = 150;
@@ -59,15 +63,18 @@ export function scanPage(): ElementDescriptor[] {
     const rect = el.getBoundingClientRect();
     if (rect.width < 2 || rect.height < 2) continue;
 
+    // Controls go by the names learning gives them: a card by its title, a dropdown by its label,
+    // a field by the text before it. Skavelo then names what's on screen the same way.
     const name = isSensitive
       ? 'masked'
-      : getAccessibleName(el);
+      : interactive
+        ? controlName(el)
+        : getAccessibleName(el);
 
-    const text = isSensitive
+    // A dropdown's text is the option chosen (Inter in a font picker), not what it is.
+    const text = isSensitive || SENSITIVE_TAGS.has(tag) || (interactive && el.matches(VALUE_SHOWN))
       ? ''
-      : SENSITIVE_TAGS.has(tag)
-        ? ''
-        : getVisibleText(el);
+      : getVisibleText(el);
 
     results.push({
       role: role || 'generic',

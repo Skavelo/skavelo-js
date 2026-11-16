@@ -230,6 +230,24 @@ export class SkavelInstance {
     this.cursor.setTheme({ accent: theme.accent, label: theme.title ?? remote.name, enabled: theme.cursor !== false });
     this.applyTargeting();
     this.widget.setReady(true);
+    this.restoreConversation();
+  }
+
+  /**
+   * A page load keeps the conversation going but starts the widget empty. For a verified user the
+   * earlier messages come back, so a follow up makes sense on screen too. Anyone else, and a
+   * conversation they removed from their history, stays as it was.
+   */
+  private restoreConversation() {
+    const id = this.session.getConversationId();
+    const user = this.cfg.user;
+    if (!id || !user?.id || !user.userHash) return;
+    this.net
+      .historyMessages(id, user)
+      .then(({ messages }) => {
+        if (this.session.getConversationId() === id) this.widget.restoreMessages(messages);
+      })
+      .catch(() => {});
   }
 
   /**

@@ -2143,6 +2143,21 @@ export class Widget {
     requestAnimationFrame(() => this.scrollToEnd());
   }
 
+  /**
+   * After a page load, the conversation still under way, shown again in the panel without opening
+   * it or touching a walkthrough on screen. Skipped once anything has been said on this page.
+   */
+  restoreMessages(messages: HistoryMessage[]) {
+    if (!messages.length || this.messagesEl.childElementCount) return;
+    for (const m of messages) {
+      if (m.sender === 'user') this.addMessage(m.content, 'user');
+      else this.addAnswerMessage(m.content, [], m.id);
+    }
+    this.hasConversation = true;
+    this.renderSuggestions();
+    this.applyDock();
+  }
+
   /** New chat: an empty widget, ready for the first question. */
   clearConversation() {
     this.messagesEl.replaceChildren();

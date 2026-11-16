@@ -191,9 +191,43 @@ function titled(el: Element, name: string): boolean {
   return heading ? heading === n : text.length > 40 && lines[0] === n;
 }
 
-/** Names compare without case, extra spaces or a required field's star: "Email address *" is Email address. */
+/**
+ * What to call a control when describing the screen: its name as above, except a card goes by
+ * its title, the way learning names it (backend crawler.ts cardName), unless another control on
+ * the page has that title or name. Used for what the widget tells Skavelo about the screen.
+ */
+export function controlName(el: Element): string {
+  const raw = computedAriaLabel(el);
+  const name = raw.replace(/\s+/g, ' ').trim();
+  const text = (el as HTMLElement).innerText?.trim() ?? '';
+  const title = cardTitle(el);
+  if (!title || raw !== text) return name;
+  const same = (v: string | null | undefined) => !!v && v.replace(/\s+/g, ' ').trim().toLowerCase() === title.toLowerCase();
+  const clash = Array.from(document.querySelectorAll(CARD_CONTROLS)).some(
+    (o) => o !== el && (same(cardTitle(o)) || same(o.getAttribute('aria-label')) || same((o as HTMLElement).innerText)),
+  );
+  return clash ? name : title;
+}
+
+const CARD_CONTROLS = 'a[href], button, summary, [role="button"], [role="tab"], [role="menuitem"], [role="option"], [role="link"]';
+
+/** A card's title: a heading inside it, or its first line when a description follows. Null otherwise. */
+function cardTitle(el: Element): string | null {
+  if (el.matches('input, textarea, select')) return null;
+  const text = ((el as HTMLElement).innerText ?? '').trim();
+  const lines = text.split('\n').map((l) => l.replace(/\s+/g, ' ').trim()).filter((l) => /[\p{L}\p{N}]/u.test(l));
+  if (lines.length < 2) return null;
+  const heading = el.querySelector('h1, h2, h3, h4, h5, h6, [role="heading"]')?.textContent?.replace(/\s+/g, ' ').trim();
+  const title = heading || (text.length > 40 ? lines[0] : '');
+  return title && title.length >= 2 && /\p{L}/u.test(title) ? title : null;
+}
+
+/**
+ * Names compare without case, extra spaces, a required field's star or trailing dots: "Email
+ * address *" is Email address, and "Name your journey..." (as older maps recorded it) is Name your journey.
+ */
 function sameName(a: string, b: string): boolean {
-  const norm = (v: string) => v.replace(/\s+/g, ' ').replace(/\s*\*$/, '').trim().toLowerCase();
+  const norm = (v: string) => v.replace(/\s+/g, ' ').replace(/\s*\*$/, '').replace(/\s*(\.{3}|\u2026)$/, '').trim().toLowerCase();
   return norm(a) === norm(b);
 }
 
@@ -218,16 +252,45 @@ function computedAriaLabel(el: Element): string {
 
   const wrap = el.closest('label');
   if (wrap?.textContent?.trim()) return wrap.textContent.trim();
-  const text = (el as HTMLElement).innerText?.trim();
-  if (text) return text;
+  // A dropdown shows what's chosen (Inter in a font picker): its label and the text before it come
+  // first, as learning names it (backend crawler.ts labelFor).
+  const valueShown = el.matches(VALUE_SHOWN);
+  // A text box's own text is what was typed or prefilled, never its name.
+  const text = el.matches('textarea') ? '' : (el as HTMLElement).innerText?.trim();
+  if (text && !valueShown) return text;
   if (el.matches(FIELDS)) {
     const near = nearbyLabel(el);
     if (near) return near;
   }
-  return (el.getAttribute('placeholder') || el.getAttribute('title') || el.getAttribute('name') || '').trim();
+  if (valueShown && text) {
+    const chosen = el instanceof HTMLSelectElement ? (el.selectedOptions[0]?.textContent?.trim() ?? '') : text.split('\n')[0].trim();
+    if (chosen) return chosen;
+  }
+  return placeholderName(el);
 }
 
-const FIELDS = 'input, textarea, select, [role="combobox"], [role="textbox"], [role="switch"], [role="checkbox"]';
+/**
+ * A field's last resort, the same as learning's (backend crawler.ts placeholderName): the
+ * placeholder without trailing dots, unless it's an example of what to type, which gives way to a
+ * tooltip or the name attribute read as words (company_name is Company name).
+ */
+function placeholderName(el: Element): string {
+  const raw = (el.getAttribute('placeholder') ?? '').replace(/\s+/g, ' ').trim();
+  const cleaned = raw.replace(/\s*(\.{3}|\u2026)$/, '').trim();
+  const example = /^(e\.?g\.?|eg|ex|for example)\b/i.test(cleaned) || /@|^https?:|^www\.|^\d/i.test(cleaned);
+  if (cleaned && !example) return cleaned;
+  const title = el.getAttribute('title')?.trim();
+  if (title) return title;
+  const attr = el.getAttribute('name') ?? '';
+  if (/^[A-Za-z][A-Za-z_-]{1,39}$/.test(attr)) {
+    const words = attr.replace(/([a-z])([A-Z])/g, '$1 $2').replace(/[_-]+/g, ' ').trim().toLowerCase();
+    return words.charAt(0).toUpperCase() + words.slice(1);
+  }
+  return cleaned || attr;
+}
+
+const VALUE_SHOWN = 'select, [role="combobox"], [aria-haspopup="listbox"]';
+const FIELDS = 'input, textarea, select, [role="combobox"], [role="textbox"], [role="switch"], [role="checkbox"], [aria-haspopup="listbox"]';
 const CONTROLS = 'input, textarea, select, button, [role="switch"], [role="checkbox"], [role="combobox"]';
 
 /**

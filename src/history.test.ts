@@ -91,6 +91,28 @@ describe('history', () => {
     expect(asks()[1].body.conversationId).toBe('22222222-2222-4222-8222-222222222222');
   });
 
+  it('shows the conversation under way again after a page load, without opening the widget', async () => {
+    serve();
+    localStorage.setItem('_sk_conversation_a', JSON.stringify({ agentId: 'a', id: PAST[0].id, userId: 'u1', at: Date.now() }));
+    start({ id: 'u1', userHash: 'f'.repeat(64) });
+    await vi.waitFor(() => expect(root().querySelectorAll('.sk-msg').length).toBe(2));
+    expect(requests.some((r) => r.path === `/sdk/v1/history/${PAST[0].id}`)).toBe(true);
+    expect($('.sk-panel').hidden).toBe(true);
+    // Opening it shows the conversation, not an empty question bar.
+    sk!.open();
+    expect($('.sk-panel').hidden).toBe(false);
+  });
+
+  it('doesn’t fetch a conversation after a page load without a signed identity', async () => {
+    serve();
+    localStorage.setItem('_sk_conversation_a', JSON.stringify({ agentId: 'a', id: PAST[0].id, userId: 'u1', at: Date.now() }));
+    start({ id: 'u1' });
+    await flush();
+    await flush();
+    expect(requests.some((r) => r.path.startsWith('/sdk/v1/history/'))).toBe(false);
+    expect(root().querySelectorAll('.sk-msg').length).toBe(0);
+  });
+
   it('starts fresh after New chat', async () => {
     serve();
     const s = start({ id: 'u1', userHash: 'f'.repeat(64) });
