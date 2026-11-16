@@ -125,8 +125,13 @@ export class SkavelInstance {
       onStop: () => this.inFlight?.abort(),
       onOpen: () => {
         this.warm();
+        this.loadHistory();
         this.emit({ type: 'open' });
       },
+      onHistoryOpen: () => this.loadHistory(true),
+      onResume: (id) => void this.resumeConversation(id),
+      onRemove: (id) => void this.removeFromHistory(id),
+      onNewChat: () => this.newChat(),
       onIntent: () => this.warm(),
       onClose: () => {
         // Closing the widget mid-walkthrough means the user is done with it. Leaving it running
@@ -336,7 +341,73 @@ export class SkavelInstance {
     }
     // Signed in state and attributes can change who the widget is for.
     this.applyTargeting();
+    // Someone else signed in: their own history, not the last person's.
+    if (this.historyFor !== user.id) {
+      this.historyAt = 0;
+      this.widget.setHistory(null);
+    }
     return this;
+  }
+
+  // ─── History ──────────────────────────────────────────────────────────────
+
+  /** The past conversation the user resumed; sent with their next question, then cleared. */
+  private resumeFrom: string | null = null;
+  private historyAt = 0;
+  private historyFor: string | undefined;
+
+  /**
+   * A verified user's past conversations. Only asked for when the site signs identities (a
+   * userHash); the server decides, and anyone it can't verify gets no history. Kept for a minute
+   * unless the list itself is opened.
+   */
+  private loadHistory(fresh = false) {
+    const user = this.cfg.user;
+    if (!user?.id || !user.userHash) {
+      this.widget.setHistory(null);
+      return;
+    }
+    if (!fresh && this.historyFor === user.id && Date.now() - this.historyAt < 60_000) return;
+    this.historyAt = Date.now();
+    this.historyFor = user.id;
+    this.net
+      .history(user)
+      .then((res) => {
+        if (this.cfg.user?.id === user.id) this.widget.setHistory(res.available ? res.conversations : null);
+      })
+      .catch(() => {});
+  }
+
+  private async resumeConversation(id: string) {
+    const user = this.cfg.user;
+    if (!user?.id) return;
+    try {
+      const { messages } = await this.net.historyMessages(id, user);
+      if (this.showMode) this.endWalkthrough();
+      this.inFlight?.abort();
+      this.widget.loadConversation(messages);
+      this.session.setConversationId(id);
+      this.resumeFrom = id;
+      this.emit({ type: 'conversation_resumed', conversationId: id });
+    } catch {
+      // Removed or no longer theirs: refresh the list so it isn't offered again.
+      this.loadHistory(true);
+    }
+  }
+
+  private async removeFromHistory(id: string) {
+    const user = this.cfg.user;
+    if (!user?.id) return;
+    await this.net.removeFromHistory(id, user).catch(() => {});
+    this.loadHistory(true);
+  }
+
+  private newChat() {
+    if (this.showMode) this.endWalkthrough();
+    this.inFlight?.abort();
+    this.session.clearConversationId();
+    this.resumeFrom = null;
+    this.widget.clearConversation();
   }
 
   private lastWarm = 0;
@@ -438,6 +509,7 @@ export class SkavelInstance {
       pageTitle: document.title,
       elements: scanPage(),
       conversationId: this.session.getConversationId(),
+      ...(this.resumeFrom ? { resumeFrom: this.resumeFrom } : {}),
       // Who's asking, so even the first answer can fit their plan and role.
       ...(this.cfg.user?.id ? { user: this.cfg.user } : {}),
       ...(suggestionId ? { suggestionId } : {}),
@@ -461,6 +533,7 @@ export class SkavelInstance {
       }
 
       this.session.setConversationId(res.conversationId);
+      this.resumeFrom = null;
       this.widget.setLoading(false);
       if (res.diagnosis) this.lastDiagnosis = res.diagnosis;
 

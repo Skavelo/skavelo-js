@@ -1,4 +1,4 @@
-import type { ThemeCfg, FeedbackRating, Suggestion } from '../types';
+import type { ThemeCfg, FeedbackRating, Suggestion, HistoryItem, HistoryMessage } from '../types';
 
 const FONT = `'Instrument Sans', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif`;
 
@@ -238,17 +238,14 @@ const WIDGET_CSS = `
   }
   /* Docked: full height along one side, over the page, so the visitor works beside it. Only where
      there's room for the app next to it (DOCK_MEDIA); smaller screens keep the floating panel. */
-  .sk-dock-btn { display: none !important; }
   @media (min-width: 900px) and (min-height: 500px) {
-    .sk-dock-btn { display: grid !important; }
     .sk-dock.sk-docked { top: 12px !important; bottom: 12px !important; width: 400px; transform: none; align-items: stretch; }
     .sk-dock.sk-docked-right { right: 12px !important; left: auto !important; }
     .sk-dock.sk-docked-left { left: 12px !important; right: auto !important; }
     .sk-docked .sk-panel { flex: 1; width: 100%; height: auto; max-height: none; }
-    .sk-docked .sk-expand { display: none; }
   }
   .sk-head { position: relative; }
-  .sk-dock-menu {
+  .sk-more-menu {
     position: absolute;
     top: calc(100% - 6px);
     right: 12px;
@@ -260,7 +257,7 @@ const WIDGET_CSS = `
     background: var(--sk-surface);
     box-shadow: var(--sk-shadow);
   }
-  .sk-dock-menu button {
+  .sk-more-menu button {
     display: flex;
     align-items: center;
     gap: 10px;
@@ -271,8 +268,8 @@ const WIDGET_CSS = `
     color: var(--sk-text);
     text-align: left;
   }
-  .sk-dock-menu button:hover, .sk-dock-menu button:focus-visible { background: var(--sk-subtle); outline: none; }
-  .sk-dock-menu svg { color: var(--sk-text-2); flex-shrink: 0; }
+  .sk-more-menu button:hover, .sk-more-menu button:focus-visible { background: var(--sk-subtle); outline: none; }
+  .sk-more-menu svg { color: var(--sk-text-2); flex-shrink: 0; }
   /* On a phone, a walkthrough step is a compact card at the bottom, so the page and the control it
      points at stay in view above it. */
   /* 639px: below CALLOUT_MIN_VIEWPORT, where steps show in the panel instead of beside the control.
@@ -305,6 +302,27 @@ const WIDGET_CSS = `
   }
 
   .sk-body { flex: 1; min-height: 0; overflow-y: auto; }
+
+  /* A verified user's past conversations. */
+  .sk-history { padding: 14px 12px 18px; }
+  .sk-history-label { padding: 0 8px 6px; font-size: 12px; color: var(--sk-text-3); }
+  .sk-history-empty { padding: 4px 8px; font-size: 14px; color: var(--sk-text-2); }
+  .sk-hist-row { display: flex; align-items: center; gap: 4px; border-radius: 10px; }
+  .sk-hist-row:hover, .sk-hist-row:focus-within { background: var(--sk-subtle); }
+  .sk-hist-open { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; padding: 9px 8px; text-align: left; }
+  .sk-hist-title { font-size: 14px; color: var(--sk-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .sk-hist-when { font-size: 12px; color: var(--sk-text-3); }
+  .sk-hist-row .sk-hist-remove { opacity: 0; }
+  .sk-hist-row:hover .sk-hist-remove, .sk-hist-row:focus-within .sk-hist-remove { opacity: 1; }
+  @media (hover: none) { .sk-hist-row .sk-hist-remove { opacity: 1; } }
+  .sk-hist-confirm { flex: 1; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 8px; font-size: 13.5px; color: var(--sk-text-2); }
+  .sk-hist-confirm span { flex: 1 1 140px; }
+  .sk-hist-confirm button { padding: 5px 10px; border-radius: 8px; font-size: 13px; font-weight: 500; }
+  .sk-hist-confirm .sk-hist-yes { background: var(--sk-text); color: var(--sk-surface); }
+  .sk-hist-confirm .sk-hist-no:hover { background: var(--sk-line); }
+  .sk-chip--resume { display: inline-flex; align-items: center; gap: 8px; max-width: 100%; }
+  .sk-chip--resume svg { flex-shrink: 0; color: var(--sk-text-2); }
+  .sk-chip--resume span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .sk-messages { display: flex; flex-direction: column; gap: 18px; padding: 18px 20px; }
   .sk-msg { font-size: 14.5px; line-height: 1.55; overflow-wrap: anywhere; }
   .sk-msg p { margin: 0 0 8px; }
@@ -614,6 +632,10 @@ const WIDGET_CSS = `
 `;
 
 const ICONS = {
+  compose: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-6"/><path d="M17.5 3.5a2.1 2.1 0 0 1 3 3L12 15l-4 1 1-4z"/></svg>',
+  more: '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="19" cy="12" r="1.7"/></svg>',
+  history: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 2.6-6.4L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l3 2"/></svg>',
+  trash: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3"/></svg>',
   dockRight: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2.5"/><path d="M14 4v16"/></svg>',
   dockLeft: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2.5"/><path d="M10 4v16"/></svg>',
   float: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2.5"/><rect x="11" y="11" width="7" height="6" rx="1.2"/></svg>',
@@ -791,6 +813,11 @@ export interface WidgetEvents {
   onFeedback: (messageId: string, rating: FeedbackRating) => void;
   /** The visitor is about to ask: pointing at the widget, focusing it or typing. */
   onIntent?: () => void;
+  /** History: the list was opened, a past conversation picked, one removed, or a new chat started. */
+  onHistoryOpen?: () => void;
+  onResume?: (conversationId: string) => void;
+  onRemove?: (conversationId: string) => void;
+  onNewChat?: () => void;
 }
 
 export interface StepDisplay {
@@ -887,6 +914,9 @@ export class Widget {
   private schemeUpdate: (() => void) | null = null;
   private preview: boolean;
   private answerEls = new Map<string, HTMLElement>();
+  /** A verified user's past conversations; null when there's no history for this visitor. */
+  private history: HistoryItem[] | null = null;
+  private historyEl!: HTMLElement;
   private callout: HTMLDivElement;
   private calloutAnchor: Element | null = null;
   private calloutFrame = 0;
@@ -934,10 +964,12 @@ export class Widget {
       <div class="sk-panel" role="dialog" aria-label="Help" hidden>
         <div class="sk-head">
           <span class="sk-title"></span>
-          <button class="sk-icon-btn sk-expand" type="button" aria-label="Expand" aria-pressed="false">${ICONS.expand}</button>
-          <button class="sk-icon-btn sk-dock-btn" type="button" aria-label="Panel position" aria-haspopup="menu" aria-expanded="false">${ICONS.dockRight}</button>
+          <button class="sk-icon-btn sk-new-btn" type="button" aria-label="New chat" title="New chat" hidden>${ICONS.compose}</button>
+          <button class="sk-icon-btn sk-history-btn" type="button" aria-label="Your conversations" title="Your conversations" aria-pressed="false" hidden>${ICONS.history}</button>
+          <button class="sk-icon-btn sk-more-btn" type="button" aria-label="More options" title="More options" aria-haspopup="menu" aria-expanded="false">${ICONS.more}</button>
           <button class="sk-icon-btn sk-panel-close" type="button" aria-label="Close">${ICONS.close}</button>
-          <div class="sk-dock-menu" role="menu" aria-label="Panel position" hidden>
+          <div class="sk-more-menu" role="menu" aria-label="More options" hidden>
+            <button type="button" role="menuitem" data-action="expand">${ICONS.expand}<span>Expand</span></button>
             <button type="button" role="menuitem" data-side="left">${ICONS.dockLeft}<span>Dock to the left</span></button>
             <button type="button" role="menuitem" data-side="right">${ICONS.dockRight}<span>Dock to the right</span></button>
             <button type="button" role="menuitem" data-side="float">${ICONS.float}<span>Float</span></button>
@@ -945,6 +977,10 @@ export class Widget {
         </div>
         <div class="sk-body">
           <div class="sk-messages" aria-live="polite"></div>
+          <div class="sk-history" hidden>
+            <div class="sk-history-label">Recent</div>
+            <div class="sk-history-list" role="list"></div>
+          </div>
           <div class="sk-intro" hidden>
             <div class="sk-intro-name"></div>
             <div class="sk-intro-text"></div>
@@ -993,6 +1029,7 @@ export class Widget {
     this.messagesEl = $('.sk-messages');
     this.stepEl = $('.sk-step');
     this.introEl = $('.sk-intro');
+    this.historyEl = $('.sk-history');
     this.askInput = $('.sk-ask input');
     this.askBtn = $('.sk-ask button');
 
@@ -1024,11 +1061,15 @@ export class Widget {
       if (this.loading) this.events.onStop();
       else this.submit(this.askInput);
     });
-    $('.sk-expand').addEventListener('click', (e) => {
-      const expanded = this.panel.classList.toggle('sk-expanded');
-      (e.currentTarget as HTMLElement).setAttribute('aria-pressed', String(expanded));
+    this.setupMoreMenu();
+    $('.sk-history-btn').addEventListener('click', () => {
+      if (this.historyEl.hidden) this.showHistory();
+      else this.showMessages();
     });
-    this.setupDockMenu();
+    $('.sk-new-btn').addEventListener('click', () => {
+      if (this.events.onNewChat) this.events.onNewChat();
+      else this.clearConversation();
+    });
     $('.sk-back').addEventListener('click', () => this.events.onStepBack());
     $('.sk-note-back').addEventListener('click', () => this.events.onStepBack());
     $('.sk-note-ask').addEventListener('click', () => {
@@ -1223,7 +1264,9 @@ export class Widget {
     if (this.renderNudge()) return;
     try { this.floatDismissed ||= sessionStorage.getItem('_sk_suggest_off') === '1'; } catch {}
     const float = this.view === 'pill' && this.floatReady && !this.floatDismissed;
-    const show = !this.hasConversation && this.suggestions.length > 0 && (this.view === 'composer' || float);
+    // Above the question bar, the latest past conversation, to pick up where they left off.
+    const recent = this.view === 'composer' && !this.hasConversation ? this.history?.[0] : undefined;
+    const show = !this.hasConversation && (this.view === 'composer' || float) && (this.suggestions.length > 0 || !!recent);
     this.suggestEl.hidden = !show;
     this.suggestEl.classList.toggle('sk-suggest--float', float);
     if (!show) return;
@@ -1256,6 +1299,19 @@ export class Widget {
       row.append(chips[0], x);
       chips[0] = row;
     }
+    if (recent) {
+      const chip = document.createElement('button');
+      chip.type = 'button';
+      chip.className = 'sk-chip sk-chip--resume';
+      chip.setAttribute('role', 'listitem');
+      chip.setAttribute('aria-label', `Continue your conversation: ${recent.title}`);
+      const label = document.createElement('span');
+      label.textContent = `Continue: ${recent.title}`;
+      chip.innerHTML = ICONS.history;
+      chip.append(label);
+      chip.addEventListener('click', () => this.events.onResume?.(recent.id));
+      chips.unshift(chip);
+    }
     this.suggestEl.replaceChildren(...chips);
   }
 
@@ -1269,6 +1325,8 @@ export class Widget {
   /** Shows a question as asked and puts the panel in its loading state. */
   showQuestion(q: string) {
     this.hasConversation = true;
+    // Asked from the history list: back to the conversation, where the answer goes.
+    if (!this.historyEl.hidden) this.showMessages();
     this.setView('panel');
     this.addMessage(q, 'user');
     this.setLoading(true);
@@ -1589,6 +1647,7 @@ export class Widget {
     this.hasConversation = true;
     this.titleEl.textContent = step.title;
     this.messagesEl.hidden = true;
+    this.historyEl.hidden = true;
     this.stepEl.hidden = false;
 
     this.introEl.hidden = true;
@@ -1682,9 +1741,13 @@ export class Widget {
 
   // ─── Docked panel ─────────────────────────────────────────────────────────
 
-  private setupDockMenu() {
-    const btn = this.dock.querySelector('.sk-dock-btn') as HTMLButtonElement;
-    const menu = this.dock.querySelector('.sk-dock-menu') as HTMLElement;
+  /**
+   * The ⋯ menu in the panel header: Expand (or Exit full size), and where there's room, docking to
+   * a side or floating. Keeps the header to New chat, history and Close.
+   */
+  private setupMoreMenu() {
+    const btn = this.dock.querySelector('.sk-more-btn') as HTMLButtonElement;
+    const menu = this.dock.querySelector('.sk-more-menu') as HTMLElement;
     if (!this.preview) {
       try {
         const saved = localStorage.getItem(PANEL_KEY);
@@ -1701,18 +1764,29 @@ export class Widget {
     };
     btn.addEventListener('click', () => {
       if (!menu.hidden) return close(false);
-      // The current choice isn't offered again: docked right offers left and Float.
-      const current = this.dockedSide() ?? 'float';
-      items().forEach((b) => (b.hidden = b.dataset.side === current));
+      const side = this.dockedSide();
+      const roomToDock = !!(this.dockMedia?.matches ?? window.matchMedia?.(DOCK_MEDIA).matches) && !this.step && !this.introDone;
+      const expanded = this.panel.classList.contains('sk-expanded');
+      for (const b of items()) {
+        if (b.dataset.action === 'expand') {
+          // Docked, the panel already has the full height.
+          b.hidden = !!side;
+          (b.querySelector('span') as HTMLElement).textContent = expanded ? 'Exit full size' : 'Expand';
+        } else {
+          // The current choice isn't offered again: docked right offers left and Float.
+          b.hidden = !roomToDock || b.dataset.side === (side ?? 'float');
+        }
+      }
       menu.hidden = false;
       btn.setAttribute('aria-expanded', 'true');
       items().find((b) => !b.hidden)?.focus();
     });
     menu.addEventListener('click', (e) => {
-      const item = (e.target as Element).closest<HTMLButtonElement>('button[data-side]');
+      const item = (e.target as Element).closest<HTMLButtonElement>('button[role="menuitem"]');
       if (!item) return;
       close(true);
-      this.setPanelSide(item.dataset.side as PanelSide | 'float');
+      if (item.dataset.action === 'expand') this.panel.classList.toggle('sk-expanded');
+      else this.setPanelSide(item.dataset.side as PanelSide | 'float');
     });
     menu.addEventListener('keydown', (e) => {
       const shown = items().filter((b) => !b.hidden);
@@ -1743,10 +1817,7 @@ export class Widget {
     if (!this.preview) {
       try { localStorage.setItem(PANEL_KEY, side); } catch {}
     }
-    if (side !== 'float') {
-      this.panel.classList.remove('sk-expanded');
-      this.dock.querySelector('.sk-expand')?.setAttribute('aria-pressed', 'false');
-    }
+    if (side !== 'float') this.panel.classList.remove('sk-expanded');
     this.applyDock();
   }
 
@@ -1767,8 +1838,9 @@ export class Widget {
     this.dock.classList.toggle('sk-docked', !!side);
     this.dock.classList.toggle('sk-docked-left', side === 'left');
     this.dock.classList.toggle('sk-docked-right', side === 'right');
-    const btn = this.dock.querySelector('.sk-dock-btn') as HTMLElement | null;
-    if (btn) btn.innerHTML = side === 'left' ? ICONS.dockLeft : side === 'right' ? ICONS.dockRight : ICONS.float;
+    // New chat once there's something to start over from, but not mid walkthrough.
+    const fresh = this.dock.querySelector('.sk-new-btn') as HTMLElement | null;
+    if (fresh) fresh.hidden = !this.hasConversation || !!this.step || !!this.introDone;
   }
 
   private setDockTop(top: boolean) {
@@ -1899,6 +1971,7 @@ export class Widget {
     (this.introEl.querySelector('.sk-intro-count') as HTMLElement).textContent =
       intro.total === 1 ? '1 step' : `${intro.total} steps`;
     this.messagesEl.hidden = true;
+    this.historyEl.hidden = true;
     this.stepEl.hidden = true;
     this.introEl.hidden = false;
     this.applyDock();
@@ -1922,7 +1995,126 @@ export class Widget {
     this.titleEl.textContent = this.title;
     this.stepEl.hidden = true;
     this.introEl.hidden = true;
+    this.historyEl.hidden = true;
+    this.dock.querySelector('.sk-history-btn')?.setAttribute('aria-pressed', 'false');
     this.messagesEl.hidden = false;
+  }
+
+  // ─── History ──────────────────────────────────────────────────────────────
+
+  /** A verified user's past conversations, or null to hide history (anyone else). */
+  setHistory(items: HistoryItem[] | null) {
+    this.history = items;
+    (this.dock.querySelector('.sk-history-btn') as HTMLElement).hidden = !items;
+    if (!this.historyEl.hidden) {
+      if (items) this.renderHistory();
+      else this.showMessages();
+    }
+    this.renderSuggestions();
+  }
+
+  /** The list of past conversations in the panel, with New chat. Not during a walkthrough step. */
+  showHistory() {
+    if (!this.history || (this.step && !this.stepEl.hidden)) return;
+    this.renderHistory();
+    this.titleEl.textContent = 'Your conversations';
+    this.messagesEl.hidden = true;
+    this.stepEl.hidden = true;
+    this.introEl.hidden = true;
+    this.historyEl.hidden = false;
+    this.dock.querySelector('.sk-history-btn')?.setAttribute('aria-pressed', 'true');
+    if (this.view !== 'panel') this.setView('panel', false);
+    this.bodyEl.scrollTop = 0;
+    this.events.onHistoryOpen?.();
+  }
+
+  private renderHistory() {
+    const list = this.historyEl.querySelector('.sk-history-list') as HTMLElement;
+    const label = this.historyEl.querySelector('.sk-history-label') as HTMLElement;
+    const items = this.history ?? [];
+    label.hidden = !items.length;
+    if (!items.length) {
+      const empty = document.createElement('p');
+      empty.className = 'sk-history-empty';
+      empty.textContent = 'Your earlier conversations will show here.';
+      list.replaceChildren(empty);
+      return;
+    }
+    list.replaceChildren(...items.map((item) => this.historyRow(item)));
+  }
+
+  private historyRow(item: HistoryItem): HTMLElement {
+    const row = document.createElement('div');
+    row.className = 'sk-hist-row';
+    row.setAttribute('role', 'listitem');
+    const show = () => {
+      const open = document.createElement('button');
+      open.type = 'button';
+      open.className = 'sk-hist-open';
+      const title = document.createElement('span');
+      title.className = 'sk-hist-title';
+      title.textContent = item.title;
+      const when = document.createElement('span');
+      when.className = 'sk-hist-when';
+      when.textContent = whenLabel(item.at);
+      open.append(title, when);
+      open.addEventListener('click', () => this.events.onResume?.(item.id));
+      const remove = document.createElement('button');
+      remove.type = 'button';
+      remove.className = 'sk-icon-btn sk-hist-remove';
+      remove.setAttribute('aria-label', `Remove "${item.title}" from your history`);
+      remove.innerHTML = ICONS.trash;
+      remove.addEventListener('click', confirm);
+      row.replaceChildren(open, remove);
+    };
+    // Removing asks once, in place: it can't be undone from here.
+    const confirm = () => {
+      const box = document.createElement('div');
+      box.className = 'sk-hist-confirm';
+      const text = document.createElement('span');
+      text.textContent = 'Remove from your history?';
+      const yes = document.createElement('button');
+      yes.type = 'button';
+      yes.className = 'sk-hist-yes';
+      yes.textContent = 'Remove';
+      yes.addEventListener('click', () => this.events.onRemove?.(item.id));
+      const no = document.createElement('button');
+      no.type = 'button';
+      no.className = 'sk-hist-no';
+      no.textContent = 'Cancel';
+      no.addEventListener('click', () => {
+        show();
+        (row.querySelector('.sk-hist-remove') as HTMLElement | null)?.focus();
+      });
+      box.append(text, yes, no);
+      row.replaceChildren(box);
+      no.focus();
+    };
+    show();
+    return row;
+  }
+
+  /** Shows a past conversation in the panel, to carry on with. */
+  loadConversation(messages: HistoryMessage[]) {
+    this.messagesEl.replaceChildren();
+    this.answerEls.clear();
+    for (const m of messages) {
+      if (m.sender === 'user') this.addMessage(m.content, 'user');
+      else this.addAnswerMessage(m.content, [], m.id);
+    }
+    this.hasConversation = true;
+    this.showMessages();
+    this.setView('panel');
+    requestAnimationFrame(() => this.scrollToEnd());
+  }
+
+  /** New chat: an empty widget, ready for the first question. */
+  clearConversation() {
+    this.messagesEl.replaceChildren();
+    this.answerEls.clear();
+    this.hasConversation = false;
+    this.showMessages();
+    this.setView('composer');
   }
 
   private scrollToEnd() {
@@ -2141,4 +2333,20 @@ function staysPut(el: Element): boolean {
     if (position === 'fixed' || position === 'sticky') return true;
   }
   return false;
+}
+
+/** When a past conversation was: "Today", "Yesterday", "3 days ago", then a date like 12 Nov. */
+export function whenLabel(iso: string, now = new Date()): string {
+  const at = new Date(iso);
+  if (Number.isNaN(at.getTime())) return '';
+  const day = (d: Date) => Date.UTC(d.getFullYear(), d.getMonth(), d.getDate());
+  const days = Math.round((day(now) - day(at)) / 86_400_000);
+  if (days <= 0) return 'Today';
+  if (days === 1) return 'Yesterday';
+  if (days < 7) return `${days} days ago`;
+  return at.toLocaleDateString(undefined, {
+    day: 'numeric',
+    month: 'short',
+    ...(at.getFullYear() !== now.getFullYear() ? { year: 'numeric' } : {}),
+  });
 }

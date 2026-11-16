@@ -88,6 +88,11 @@ export class SessionStore {
     write(local, conversationKey(this.agentId), { agentId: this.agentId, id, userId: this.userId(), at: Date.now() });
   }
 
+  /** New chat: the next question starts a new conversation. */
+  clearConversationId() {
+    write(local, conversationKey(this.agentId), null);
+  }
+
   getWalkthrough(): SavedWalkthrough | null {
     const state = read<TabState>(tab, TAB_KEY);
     // Multiple agents can share an origin; only restore our own state.

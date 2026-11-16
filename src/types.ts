@@ -137,6 +137,23 @@ export interface ThemeCfg {
 
 // ─── API request / response ───────────────────────────────────────────────────
 
+/** A past conversation in a verified user's history. */
+export interface HistoryItem {
+  id: string;
+  /** Their first question. */
+  title: string;
+  /** Last activity, ISO 8601. */
+  at: string;
+}
+
+/** A message of a past conversation, shown again when it's resumed. */
+export interface HistoryMessage {
+  id: string;
+  sender: 'user' | 'assistant';
+  content: string;
+  at: string;
+}
+
 export interface AskPayload {
   question: string;
   pageUrl: string;
@@ -144,6 +161,8 @@ export interface AskPayload {
   /** Trimmed visible elements on the current page. Never includes input values. */
   elements: ElementDescriptor[];
   conversationId?: string;
+  /** A past conversation the user resumed from their history; carried on if conversationId has gone idle. */
+  resumeFrom?: string;
   user?: UserContext;
   /** Set when the visitor clicked a suggestion; the server acts on its instruction. */
   suggestionId?: string;
@@ -321,6 +340,8 @@ export type SkavelEvent =
       diagnosis?: string;
       pageUrl: string;
     }
+  /** A verified user picked a past conversation from their history to carry on with. */
+  | { type: "conversation_resumed"; conversationId: string }
   | { type: "open" }
   | { type: "close" };
 

@@ -27,12 +27,20 @@ const make = (theme: AppliedTheme = {}) => {
   const widget = new Widget(root, theme, events);
   widget.applyTheme(theme);
   const $ = (sel: string) => root.querySelector(sel) as HTMLElement;
+  const $$ = (sel: string) => Array.from(root.querySelectorAll(sel)) as HTMLElement[];
   const docked = () => ['left', 'right'].find((s) => $('.sk-dock').classList.contains(`sk-docked-${s}`)) ?? null;
-  const choose = (side: string) => {
-    $('.sk-dock-btn').click();
-    ($(`.sk-dock-menu [data-side="${side}"]`) as HTMLButtonElement).click();
+  /** What the ⋯ menu offers right now. */
+  const offered = () => {
+    $('.sk-more-btn').click();
+    const items = $$('.sk-more-menu [role="menuitem"]').filter((b) => !b.hidden).map((b) => b.textContent);
+    $('.sk-more-btn').click();
+    return items;
   };
-  return { widget, $, docked, choose };
+  const choose = (side: string) => {
+    $('.sk-more-btn').click();
+    ($(`.sk-more-menu [data-side="${side}"]`) as HTMLButtonElement).click();
+  };
+  return { widget, $, docked, choose, offered };
 };
 
 describe('docked panel', () => {
@@ -55,12 +63,11 @@ describe('docked panel', () => {
   });
 
   it('takes the visitor’s choice from the menu over the team’s, remembers it, and floats again', () => {
-    const { widget, docked, choose, $ } = make({ panel: 'right' });
+    const { widget, docked, choose, offered } = make({ panel: 'right' });
     widget.showView('panel');
-    $('.sk-dock-btn').click();
-    // The current side isn't offered again.
-    expect(($('.sk-dock-menu [data-side="right"]') as HTMLButtonElement).hidden).toBe(true);
-    ($('.sk-dock-menu [data-side="left"]') as HTMLButtonElement).click();
+    // Docked right: the other side and Float, but not Expand, which a docked panel doesn't need.
+    expect(offered()).toEqual(['Dock to the left', 'Float']);
+    choose('left');
     expect(docked()).toBe('left');
     expect(localStorage.getItem('_sk_panel')).toBe('left');
     choose('float');
@@ -72,20 +79,24 @@ describe('docked panel', () => {
     expect(next.docked()).toBeNull();
   });
 
-  it('docking ends Expand', () => {
-    const { widget, choose, $ } = make();
+  it('expands from the menu, offers to exit full size, and docking ends it', () => {
+    const { widget, choose, offered, $ } = make();
     widget.showView('panel');
-    $('.sk-expand').click();
+    expect(offered()).toEqual(['Expand', 'Dock to the left', 'Dock to the right']);
+    $('.sk-more-btn').click();
+    ($('.sk-more-menu [data-action="expand"]') as HTMLButtonElement).click();
     expect($('.sk-panel').classList.contains('sk-expanded')).toBe(true);
+    expect(offered()[0]).toBe('Exit full size');
     choose('right');
     expect($('.sk-panel').classList.contains('sk-expanded')).toBe(false);
   });
 
-  it('floats on a screen too small to dock', () => {
+  it('floats on a screen too small to dock, and offers only Expand there', () => {
     wide = false;
-    const { widget, docked } = make({ panel: 'right' });
+    const { widget, docked, offered } = make({ panel: 'right' });
     widget.showView('panel');
     expect(docked()).toBeNull();
+    expect(offered()).toEqual(['Expand']);
   });
 
   it('runs a walkthrough the usual way, beside the control, and docks again when it’s over', () => {
@@ -123,15 +134,10 @@ describe('docked panel', () => {
     expect(docked()).toBe('right');
   });
 
-  it('keeps a side chosen during a walkthrough for after it', () => {
-    const { widget, docked, choose } = make();
-    const target = document.createElement('button');
-    document.body.append(target);
+  it('doesn’t offer docking during a walkthrough, which always runs the usual way', () => {
+    const { widget, offered } = make({ panel: 'right' });
     widget.showView('panel');
     widget.showStep({ title: 'x', instruction: 'Click **Billing**.', stepIndex: 0, total: 2, found: false });
-    choose('left');
-    expect(docked()).toBeNull();
-    widget.clearStep();
-    expect(docked()).toBe('left');
+    expect(offered()).toEqual(['Expand']);
   });
 });

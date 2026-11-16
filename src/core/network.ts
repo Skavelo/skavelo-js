@@ -1,4 +1,4 @@
-import type { AskPayload, AskResponse, FeedbackPayload, RemoteConfig, ShowPayload, UserContext } from '../types';
+import type { AskPayload, AskResponse, FeedbackPayload, HistoryItem, HistoryMessage, RemoteConfig, ShowPayload, UserContext } from '../types';
 
 /** Where the widget talks to Skavelo unless `apiUrl` says otherwise. */
 export const DEFAULT_API_URL = 'https://api.skavelo.com/api';
@@ -125,6 +125,19 @@ export class NetworkClient {
 
   async handoff(payload: { conversationId: string; reason: string; channel: string; email?: string; note?: string; pageUrl?: string }): Promise<void> {
     await this.request('POST', `${SDK_ROUTES}/handoff`, payload);
+  }
+
+  /** A verified user's past conversations; available is false for anyone else. */
+  async history(user: UserContext): Promise<{ available: boolean; conversations: HistoryItem[] }> {
+    return this.request('POST', `${SDK_ROUTES}/history`, { user });
+  }
+
+  async historyMessages(id: string, user: UserContext): Promise<{ id: string; messages: HistoryMessage[] }> {
+    return this.request('POST', `${SDK_ROUTES}/history/${encodeURIComponent(id)}`, { user });
+  }
+
+  async removeFromHistory(id: string, user: UserContext): Promise<void> {
+    await this.request('POST', `${SDK_ROUTES}/history/${encodeURIComponent(id)}/remove`, { user });
   }
 
   async identify(conversationId: string, user: UserContext): Promise<void> {
