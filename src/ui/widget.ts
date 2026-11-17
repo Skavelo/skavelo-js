@@ -932,6 +932,8 @@ export class Widget {
   private dockMedia: MediaQueryList | null = null;
   private dockMediaChange: (() => void) | null = null;
   private outsideMenu: ((e: Event) => void) | null = null;
+  private insideMenu: ((e: Event) => void) | null = null;
+  private menuRoot: ShadowRoot | null = null;
 
   constructor(
     shadowRoot: ShadowRoot,
@@ -1061,7 +1063,7 @@ export class Widget {
       if (this.loading) this.events.onStop();
       else this.submit(this.askInput);
     });
-    this.setupMoreMenu();
+    this.setupMoreMenu(shadowRoot);
     $('.sk-history-btn').addEventListener('click', () => {
       if (this.historyEl.hidden) this.showHistory();
       else this.showMessages();
@@ -1745,7 +1747,7 @@ export class Widget {
    * The ⋯ menu in the panel header: Expand (or Exit full size), and where there's room, docking to
    * a side or floating. Keeps the header to New chat, history and Close.
    */
-  private setupMoreMenu() {
+  private setupMoreMenu(root: ShadowRoot) {
     const btn = this.dock.querySelector('.sk-more-btn') as HTMLButtonElement;
     const menu = this.dock.querySelector('.sk-more-menu') as HTMLElement;
     if (!this.preview) {
@@ -1794,11 +1796,19 @@ export class Widget {
       const to = e.relatedTarget as Node | null;
       if (!menu.hidden && to && !menu.contains(to) && to !== btn) close(false);
     });
-    // A click anywhere else, on the page or in the panel, puts the menu away.
-    this.outsideMenu = (e: Event) => {
+    // A click anywhere else, on the page or in the panel, puts the menu away. On a live site the
+    // widget is in a closed shadow root, so a listener on the page can't see which part of the
+    // widget was pressed: the page only tells clicks outside the widget, and the widget's own root
+    // tells clicks inside it.
+    this.menuRoot = root;
+    this.insideMenu = (e: Event) => {
       const path = e.composedPath();
       if (!menu.hidden && !path.includes(menu) && !path.includes(btn)) close(false);
     };
+    this.outsideMenu = (e: Event) => {
+      if (!menu.hidden && !e.composedPath().includes(root.host)) close(false);
+    };
+    root.addEventListener('pointerdown', this.insideMenu, true);
     window.addEventListener('pointerdown', this.outsideMenu, true);
     // Back to floating when the window gets too small for a docked panel, and docked again after.
     this.dockMedia = window.matchMedia?.(DOCK_MEDIA) ?? null;
@@ -2321,6 +2331,7 @@ export class Widget {
     clearTimeout(this.clearTimer);
     if (this.dockMediaChange) this.dockMedia?.removeEventListener?.('change', this.dockMediaChange);
     if (this.outsideMenu) window.removeEventListener('pointerdown', this.outsideMenu, true);
+    if (this.insideMenu) this.menuRoot?.removeEventListener('pointerdown', this.insideMenu, true);
     cancelAnimationFrame(this.schemeFrame);
     this.schemeObserver?.disconnect();
     if (this.schemeUpdate) this.schemeMedia?.removeEventListener?.('change', this.schemeUpdate);
